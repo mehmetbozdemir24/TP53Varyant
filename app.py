@@ -294,8 +294,8 @@ def model_a_inputs():
 def ml_compare():
     """Bu varyant icin modellerimizi diger araclar ve bilinen gercek sonucla yan yana koyar."""
     st.markdown("##### Karşılaştırma: bu varyantta modellerimiz ne dedi, gerçek sonuç ne?")
-    st.caption("Soldaki tablo patojenite tahminleridir (Model A ve hazır araçlar). Sağda Model A ve Model B'nin "
-               "(B1 ve B2) bilinen gerçek sonuçla karşılaştırması var.")
+    st.caption("Üstteki tablo patojenite tahminleridir (Model A ve hazır araçlar). Altındaki doğrulama tablosu Model A, "
+               "B1 ve B2'nin tahminini gerçek sonuçla ve o gerçeğin kaynağıyla birlikte gösterir.")
     def yon(v, hi, lo, low_bad=False):
         if v is None:
             return "—"
@@ -317,41 +317,64 @@ def ml_compare():
         truth_src, truth = "ClinGen uzman paneli", r["erepo_class"]
     elif s(r.get("clinvar_germline")) and (_num(r.get("clinvar_stars")) or 0) >= 1:
         truth_src, truth = f"ClinVar, {int(_num(r.get('clinvar_stars')))}★", r["clinvar_germline"]
-    c1, c2 = st.columns([1.25, 1])
+    c1, _sp = st.columns([1.25, 1])
     with c1:
         st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
         st.caption("Burada yalnızca en önemli 4 araç var. Tüm araçlar: Varyant Değerlendirme → Tahminler. "
                    "Model A'ya giren 35 sayının tamamı aşağıda.")
         with st.popover("Model A'ya giren 35 sayının tamamı"):
             st.dataframe(model_a_inputs(), hide_index=True, width="stretch", height=420)
-    with c2:
-        if truth:
-            t_path = "athogenic" in truth and "onflict" not in truth and "enign" not in truth
-            t_ben = "enign" in truth and "onflict" not in truth and "athogenic" not in truth
-            if sA is not None and (t_path or t_ben):
-                ok = (sA >= .5) == t_path
-                st.markdown(f"**Bilinen sonuç ({truth_src}):** {truth}<br>Model A {'✅ aynı yönde' if ok else '❌ farklı yönde'} "
-                            f"({sA:.2f})", unsafe_allow_html=True)
-            else:
-                st.markdown(f"**Bilinen sonuç ({truth_src}):** {truth}", unsafe_allow_html=True)
+    verify_table(sA, truth, truth_src)
+
+
+def verify_table(sA, truth, truth_src):
+    """Modelin tahmini ile gercek sonucu, gercegin KAYNAGIYLA birlikte gosterir; kullanici kendisi dogrulayabilsin."""
+    st.markdown("**Doğrulama: tahmin mi, gerçek mi?**")
+    rows = []
+    # --- Model A
+    if truth:
+        t_path = "athogenic" in truth and "onflict" not in truth and "enign" not in truth
+        t_ben = "enign" in truth and "onflict" not in truth and "athogenic" not in truth
+        if s(r.get("erepo_url")) and truth_src.startswith("ClinGen"):
+            src = f"[ClinGen eRepo kaydı]({r['erepo_url']})"
         else:
-            st.markdown("**Bilinen sonuç:** uzman paneli veya güvenilir ClinVar kaydı yok; Model A burada gerçek bir "
-                        "tahmin yapıyor.")
-        kato = s(r.get("kato"))
-        names = {"functional": "Functional", "partial": "Partially functional", "nonfunctional": "Non-functional"}
-        tr = {"Functional": "fonksiyonel", "Partially functional": "kısmen fonksiyonel", "Non-functional": "fonksiyonsuz"}
-        lines_ = []
-        for mk, desc in (("B1", "dizi + araçlar"), ("B2", "+ laboratuvar testleri")):
-            b = {k_: _num(r.get(f"ml_{mk}_{k_}")) for k_ in names}
-            if all(v is not None for v in b.values()):
-                pred = names[max(b, key=b.get)]
-                mark = ("✅" if pred == kato else "❌") if kato in names.values() else ""
-                lines_.append(f"Model {mk} ({desc}): {tr[pred]} %{100 * max(b.values()):.0f} {mark}")
-        if lines_:
-            head = (f"**Kato testi (gerçek ölçüm):** {tr.get(kato, kato)}" if kato in names.values()
-                    else "**Kato testi:** ölçüm yok (aşağıdakiler test edilmemiş varyant için tahmin)")
-            st.markdown(head + "<br>" + "<br>".join(lines_), unsafe_allow_html=True)
-        st.caption("Eğitimdeki varyantlarda gösterilen skorlar, modelin o varyantı görmediği turdan gelir (sızıntısız).")
+            src = f"[ClinVar kaydı](https://www.ncbi.nlm.nih.gov/clinvar/variation/{r['clinvar_id']}/)" if s(r.get("clinvar_id")) else truth_src
+        if sA is not None and (t_path or t_ben):
+            ok = (sA >= .5) == t_path
+            rows.append(dict(m="Model A", t=f"{sA:.2f} → {'patojenik' if sA >= .5 else 'benign'} (0.5 üstü patojenik)",
+                             g=f"{truth} ({truth_src})", k=src, sonuc="✅ aynı" if ok else "❌ farklı"))
+        else:
+            rows.append(dict(m="Model A", t=f"{sA:.2f}" if sA is not None else "—", g=f"{truth} ({truth_src})", k=src,
+                             sonuc="— (gerçek sonuç kesin değil)"))
+    else:
+        rows.append(dict(m="Model A", t=f"{sA:.2f}" if sA is not None else "—", g="bilinmiyor", k="uzman paneli / ClinVar kaydı yok",
+                         sonuc="— (gerçek tahmin)"))
+    # --- Model B1 / B2
+    kato = s(r.get("kato"))
+    names = {"functional": "Functional", "partial": "Partially functional", "nonfunctional": "Non-functional"}
+    tr = {"Functional": "fonksiyonel", "Partially functional": "kısmen fonksiyonel", "Non-functional": "fonksiyonsuz"}
+    kato_nci = s(r.get("kato_nci"))
+    ksrc = ("[VCEP Tablo S3 (Kato 2003)](https://doi.org/10.1186/s13073-025-01536-3)"
+            + (f"; NCI TP53'te de: {kato_nci}" if kato_nci else ""))
+    for mk, desc in (("B1", "dizi + araçlar"), ("B2", "+ lab. testleri")):
+        b = {k_: _num(r.get(f"ml_{mk}_{k_}")) for k_ in names}
+        if not all(v is not None for v in b.values()):
+            continue
+        pred = names[max(b, key=b.get)]
+        t = f"en yüksek: {tr[pred]} %{100 * max(b.values()):.0f}"
+        if kato in names.values():
+            rows.append(dict(m=f"Model {mk} ({desc})", t=t, g=f"{tr[kato]} (Kato maya deneyi)", k=ksrc,
+                             sonuc="✅ aynı" if pred == kato else "❌ farklı"))
+        else:
+            rows.append(dict(m=f"Model {mk} ({desc})", t=t, g="ölçülmemiş", k="Kato deneyi bu varyantta yapılmamış",
+                             sonuc="— (gerçek tahmin)"))
+    md = "| Model | Tahmin | Gerçek sonuç | Gerçeğin kaynağı | Sonuç |\n|---|---|---|---|---|\n"
+    md += "\n".join(f"| {x['m']} | {x['t']} | {x['g']} | {x['k']} | {x['sonuc']} |" for x in rows)
+    st.markdown(md)
+    st.caption("✅/❌ şöyle konur: modelin tahmini (Model A için 0.5 eşiği, Model B için en yüksek olasılıklı sınıf) "
+               "kaynaktaki gerçek sonuçla aynıysa ✅, değilse ❌. Gerçek sonucu bağlantıdan kendin kontrol edebilirsin; "
+               "Kato sonucu bu sekmenin en üstündeki 'Fonksiyonel test sonuçları' tablosunda da yazıyor. Eğitimdeki "
+               "varyantlarda tahmin, modelin o varyantı görmediği turdan gelir; yani model cevabı ezberden bilmiyor.")
 
 
 def points_table(res):
