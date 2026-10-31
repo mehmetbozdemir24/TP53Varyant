@@ -1,12 +1,33 @@
-"""Makine ogrenmesi modulleri.
+"""Makine ogrenmesi modulleri. Iki siniflandirici egitilir: Model A ve Model B (B1, B2 iki surum).
 
-Model A - "TP53 Aggregated Prediction": Franklin'in toplu tahmin skorunun TP53'e ozel karsiligi.
-          Girdi: yalnizca in-silico skorlar (+ istege bagli ESM-2 LLR). Etiket: ClinGen eRepo uzman
-          siniflamasi + ClinVar (>= 1 yildiz, celiskisiz) P/LP vs B/LB missense varyantlar.
-Model B - "Fonksiyon / hipomorf": Kato 2003 transaktivasyon sinifini (Functional / Partially functional /
-          Non-functional) tahmin eder. 'Partially functional' olasiligi hipomorf aday skoru olarak kullanilir.
-          B1: sekans + yapi + in-silico ozellikleri;  B2: B1 + diger fonksiyonel testler (Giacomelli, Funk, Kotler).
+ONEMLI: REVEL, AlphaMissense, SIFT vb. araclari BIZ egitmedik. Her biri baska bir grubun modelidir; skorlari
+dbNSFP'de her olasi degisim icin hazir yayimlanmistir ve MyVariant.info'dan indirildi. ESM-2'yi de egitmedik,
+yalnizca calistirip skor aldik (scripts/esm2_llr.py). Biz bu hazir skorlari GIRDI olarak alip TP53'e ozel bir
+ust model egitiyoruz (stacking / meta-model).
 
+Model A - patojenite (ikili siniflandirici, lojistik regresyon + sigmoid kalibrasyon)
+    Girdi  : varyant basina 35 sayi = 32 dbNSFP skoru + Align-GVGD sinifi (VCEP Tablo S2) + esm2_llr + esm2_entropy
+    Etiket : 1 = P/LP, 0 = B/LB  (ClinGen eRepo uzman karari; yoksa ClinVar >= 1 yildiz, celiskisiz)
+    Veri   : 407 etiketli TP53 missense (248 / 159)
+    Cikti  : ml_path_score = patojenik olma olasiligi (0-1)
+    Ornek  : R175H  girdi revel=0.922, alphamissense=0.986, bayesdel=0.546, sift=0, polyphen2_hvar=0.999,
+                    cadd_phred=25.1, esm1b=-10.4, gerp=5.41, agvgd_num=25, esm2_llr=-5.97, ... (35 sayi)
+                    etiket 1 (uzman paneli: Pathogenic)  ->  cikti 0.97
+             P72R   girdi revel=0.368, alphamissense=0.091, bayesdel=-0.108, sift=0.244, ...
+                    etiket 0 (ClinVar: Benign)            ->  cikti 0.018
+
+Model B - fonksiyon / hipomorf (3 sinifli siniflandirici, gradient boosting)
+    Girdi  : Model A'nin 35 sayisi + 24 amino asit/konum ozelligi (structural(): kodon, domain, hidrofobiklik,
+             hacim, yuk, Grantham, prolin/glisin/sistein, cinko ve DNA temas pozisyonu)
+             B2 ek olarak 4 laboratuvar sonucu: Giacomelli, Funk, Kotler LOF ve Kawaguchi (VCEP Tablo S3)
+    Etiket : Kato 2003 maya testi sinifi: 0 = Functional, 1 = Partially functional, 2 = Non-functional
+    Veri   : Kato sonucu olan 2.670 missense (1.400 / 681 / 589)
+    Cikti  : ml_B{1,2}_functional / _partial / _nonfunctional olasiliklari (toplam 1)
+    Ornek  : R175H  ek girdi codon=175, DNA baglanma domaini=1, grantham=29, hyd_delta=1.3, vol_delta=-20.2,
+                    giacomelli_lof=1, funk_lof=1, kotler_lof=1   etiket 2 (Non-functional)
+                    ->  B1 cikti fonksiyonel 0.01 / kismen 0.32 / fonksiyonsuz 0.67
+
+Ne A ne B ACMG puanina eklenir; LLM'e de girdi olarak verilmez. Yalnizca arayuzde bilgi olarak gosterilir.
 Dogrulama: kodona gore gruplu 5 katli capraz dogrulama (ayni kodondaki varyantlar ayni katta).
 Calistirma: python -m tp53.ml
 """

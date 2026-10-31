@@ -361,6 +361,45 @@ Uyarı: BP6 ClinVar kararını doğrudan kanıt saydığı için Franklin modunu
 
 Kod: `tp53/ml.py`, çalıştırma `python -m tp53.ml`. Yalnızca missense (2.786 varyant).
 
+### 6.0 Özetle: ne eğitiyoruz?
+
+İki sınıflandırıcı eğitiyoruz: **Model A** (2 sınıf) ve **Model B** (3 sınıf; B1 ve B2 iki sürüm). REVEL,
+AlphaMissense, SIFT gibi araçlar başka grupların modelleridir. Skorları dbNSFP'de her olası değişim için hazır
+yayımlanmıştır; biz bu skorları indirip **girdi (özellik)** olarak kullanırız. ESM-2'yi de biz eğitmedik, yalnızca
+çalıştırıp skor aldık. Yani Model A, hazır skorların üzerine kurulan TP53'e özel bir üst modeldir (stacking):
+hangi araca ne kadar güvenileceğini TP53'te cevabı bilinen varyantlardan öğrenir.
+
+| | Model A | Model B |
+|---|---|---|
+| Tür | ikili sınıflandırıcı (lojistik regresyon) | 3 sınıflı sınıflandırıcı (gradient boosting) |
+| Girdi | 35 sayı: 32 dbNSFP skoru + Align-GVGD (Tablo S2) + 2 ESM-2 skoru | A'nın 35 sayısı + 24 amino asit/konum özelliği (+ B2'de 4 laboratuvar sonucu, Tablo S3) |
+| Etiket | 1 = P/LP, 0 = B/LB (uzman paneli, yoksa ClinVar) | Kato testi: 0 fonksiyonel, 1 kısmen, 2 fonksiyonsuz |
+| Eğitim satırı | 407 | 2.670 |
+| Çıktı | patojenik olma olasılığı | üç sınıfın olasılığı |
+
+Somut satır, R175H (c.524G>A):
+
+```
+Model A girdisi (35):
+  revel 0.922 · alphamissense 0.986 · bayesdel 0.546 · varity_r 0.951 · varity_er 0.867 · sift 0 · sift4g 0
+  polyphen2_hdiv 1 · polyphen2_hvar 0.999 · primateai 0.655 · fathmm -7.55 · fathmm_xf 0.9 · mutationtaster 1
+  mutationassessor 2.58 · provean -4.87 · dann 0.999 · metalr 0.996 · metasvm 0.92 · metarnn 0.991
+  clinpred 0.993 · vest4 0.938 · mvp 0.997 · mpc 1.1 · esm1b -10.4 · eve 0.502 · gmvp 0.785 · deogen2 0.996
+  cadd_phred 25.1 · gerp 5.41 · phylop100 6.16 · phastcons100 1 · lrt 8e-06      (32 sayı: dbNSFP)
+  agvgd_num 25                                                                   (VCEP Tablo S2)
+  esm2_llr -5.97 · esm2_entropy 0.122                                            (ESM-2, bizim çalıştırmamız)
+Model A etiketi: 1 (ClinGen uzman paneli: Pathogenic)        Model A çıktısı: 0.97
+
+Model B ek girdisi (28):
+  codon 175 · domain = DNA bağlanma · hyd -4.5 → -3.2 (Δ +1.3) · hacim 173 → 153 (Δ -20.2)
+  yük 1 → 0.1 (Δ -0.9) · grantham 29 · to_pro 0 · from_gly 0 · to_gly 0 · cys_change 0
+  zinc_site 0 · dna_contact 0                                                    (bizim kodumuz, structural())
+  giacomelli_lof 1 · funk_lof 1 · kotler_lof 1 · kawaguchi yok                   (yalnızca B2; Tablo S3)
+Model B etiketi: 2 (Kato: Non-functional)     B1 çıktısı: fonksiyonel 0.01 / kısmen 0.32 / fonksiyonsuz 0.67
+```
+
+Model A ve B'nin çıktıları ACMG puanına eklenmez ve LLM'e girdi olarak verilmez; yalnızca arayüzde gösterilir.
+
 ### 6.1 Özellikler
 
 - **In-silico (35):** `revel, alphamissense, bayesdel, varity_r, varity_er, sift, sift4g, polyphen2_hdiv,

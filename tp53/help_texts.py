@@ -86,13 +86,15 @@ HELP = {
         "testleri birleştirdiği karardır ve ACMG puanına giren odur (PS3 +4 / BS3 -4)."
     ),
     "ml_a": (
-        "**Model A** 33 tahmin aracının skorunu tek bir olasılığa çevirir (Franklin'deki \"Aggregated Prediction\" "
-        "fikri). Doğru cevabı bilinen 407 TP53 varyantıyla (248 patojenik, 159 benign) eğitildi. Çıktı 0-1 arası "
+        "**Model A** (sınıflandırıcı): REVEL, AlphaMissense, SIFT gibi başka grupların hazır modellerinin bu varyant "
+        "için ürettiği 35 skoru girdi olarak alır ve tek bir olasılığa çevirir (Franklin'deki \"Aggregated Prediction\" "
+        "fikri). Örnek: R175H için girdi REVEL 0.922, AlphaMissense 0.986, SIFT 0 ... (35 sayı), çıktı 0.97. Doğru cevabı bilinen 407 TP53 varyantıyla (248 patojenik, 159 benign) eğitildi. Çıktı 0-1 arası "
         "\"patojenik olma olasılığı\"dır: 0.9 diyen varyantların yaklaşık %90'ı gerçekten patojeniktir. Eğitim setindeki "
         "varyantlar için, modelin o varyantı hiç görmediği turdaki skor gösterilir. **ACMG puanına eklenmez.**"
     ),
     "ml_b": (
-        "**Model B** proteinin ne kadar çalıştığını tahmin eder (Kato maya testi sınıfları): fonksiyonel, kısmen "
+        "**Model B** (3 sınıflı sınıflandırıcı): Model A'nın 35 skoruna amino asit değişiminin özelliklerini (konum, "
+        "hacim, yük) ekler ve proteinin ne kadar çalıştığını tahmin eder (Kato maya testi sınıfları): fonksiyonel, kısmen "
         "fonksiyonel (hipomorf), fonksiyonsuz. Üç olasılığın toplamı 1'dir. Kısmen fonksiyonel varyantlar daha hafif "
         "etkili, kanser riskini daha az artıran varyantlardır; laboratuvarda test edilmemiş varyantlar için ipucu verir. "
         "B1 sadece dizi ve tahmin araçlarını, B2 ek olarak diğer laboratuvar testlerini kullanır."
