@@ -72,6 +72,25 @@ def _agg(v, how="max"):
         return None
 
 
+def _mt_oriented(m):
+    """MutationTaster 'score' tahminin dogruluk olasiligidir; D/A (hastalik) ise oldugu gibi, N/P (polimorfizm) ise
+    1-skor alinarak 'zararlilik olasiligina' cevrilir. Transkriptler arasi en yuksek deger dondurulur."""
+    if not isinstance(m, dict) or m.get("score") is None:
+        return None
+    sc, pr = m["score"], m.get("pred")
+    sc = sc if isinstance(sc, list) else [sc]
+    pr = pr if isinstance(pr, list) else [pr] * len(sc)
+    vals = []
+    for s, p in zip(sc, pr):
+        try:
+            s = float(s)
+        except (TypeError, ValueError):
+            continue
+        vals.append(s if p in ("D", "A") else 1 - s if p in ("N", "P") else None)
+    vals = [v for v in vals if v is not None]
+    return max(vals) if vals else None
+
+
 def _g(d, *path):
     for p in path:
         if not isinstance(d, dict):
@@ -117,7 +136,7 @@ def read_dbnsfp():
             primateai=_agg(_g(d, "primateai", "score")),
             fathmm=_agg(_g(d, "fathmm", "score"), "min"),
             fathmm_xf=_agg(_g(d, "fathmm-xf", "coding_score")),
-            mutationtaster=_agg(_g(d, "mutationtaster", "score")),
+            mutationtaster=_mt_oriented(_g(d, "mutationtaster")),
             mutationassessor=_agg(_g(d, "mutationassessor", "score")),
             provean=_agg(_g(d, "provean", "score"), "min"),
             dann=_agg(_g(d, "dann", "score")),
@@ -241,6 +260,9 @@ def read_nci():
     gagg = gl.groupby("c").agg(nci_germ_families=("Family_ID", "nunique"),
                                nci_germ_individuals=("Individual_ID", "nunique"),
                                nci_germ_classes=("Class", lambda s: "; ".join(f"{k} ({v})" for k, v in Counter(s.dropna()).most_common())))
+    # Li-Fraumeni fenotipini karsilayan aileler (LFS, LFL, Chompret); FH / noFH / Other sayilmaz
+    lfs_fam = gl[gl["Class"].isin(["LFS", "LFL", "TP53_Chompret"])].groupby("c")["Family_ID"].nunique()
+    gagg["nci_germ_lfs_families"] = lfs_fam.reindex(gagg.index).fillna(0)
     keep = ["c", "Family_ID", "Class", "Country", "Individual_ID", "Sex", "Germline_carrier", "Topography",
             "Short_topo", "Morphology", "Age_at_diagnosis", "Ref_ID", "PubMedLink"]
     gl[[k for k in keep if k in gl.columns]].to_parquet(PROC / "nci_germline.parquet", index=False)
@@ -347,16 +369,24 @@ def read_uniprot():
             feats.append(dict(type=f["type"], start=f["location"]["start"]["value"], end=f["location"]["end"]["value"],
                               description=f.get("description", "") or ", ".join(
                                   (x.get("name") or "") for x in [f.get("ligand") or {}])))
+    # UniProt'un kendi (kurate) aciklamasi: "in LFS; germline mutation ..." gibi
+    curated = {}
+    for f in u["features"]:
+        if f["type"] == "Natural variant" and f.get("featureId") and f.get("alternativeSequence"):
+            alt = (f["alternativeSequence"].get("alternativeSequences") or [""])[0]
+            p1 = f"{f['alternativeSequence'].get('originalSequence', '')}{f['location']['start']['value']}{alt}"
+            curated[p1] = f.get("description") or ""
     nat = defaultdict(list)
     vv = json.load(open(RAW / "uniprot_variation_P04637.json", encoding="utf-8"))
     for f in vv["features"]:
         if f.get("begin") != f.get("end") or not f.get("alternativeSequence"):
             continue
         p1 = f"{f.get('wildType', '')}{f['begin']}{f['alternativeSequence']}"
-        sig = sorted({s.get("type") for s in f.get("clinicalSignificances") or [] if s.get("type")})
+        # Proteins API, ClinVar/Ensembl'den derlenmis klinik anlam ekler; kanit kriteri olmayan (0 yildiz) kayitlar atlanir
+        sig = sorted({s.get("type") for s in f.get("clinicalSignificances") or []
+                      if s.get("type") and s.get("reviewStatus") != "no assertion criteria provided"})
         if f.get("ftId", "").startswith("VAR_"):
-            nat[p1].append(dict(ftId=f["ftId"], sig="; ".join(sig), desc=f.get("descriptions", [{}])[0].get("value", "")
-                                if f.get("descriptions") else ""))
+            nat[p1].append(dict(ftId=f["ftId"], sig="; ".join(sig), desc=curated.get(p1, "")))
     up = pd.DataFrame([dict(p1=k, uniprot_var=";".join(x["ftId"] for x in v),
                             uniprot_sig="; ".join(sorted({x["sig"] for x in v if x["sig"]})) or None,
                             uniprot_desc=(v[0]["desc"] or None)) for k, v in nat.items()]).set_index("p1")

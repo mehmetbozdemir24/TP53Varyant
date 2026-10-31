@@ -206,10 +206,18 @@ class TP53Classifier:
         'rs28934578' kabul eder. Eslesen varyant satirlarini dondurur."""
         from .common import norm_c, p3_to_p1
         q = q.strip().replace(" ", "")
-        q = re.sub(r"^(TP53|NM_000546(\.\d+)?)[:(]?\)?:?", "", q, flags=re.I)
+        # 'TP53:', 'NM_000546.6:', 'NM_000546.5(TP53):' gibi onekleri at
+        q = re.sub(r"^(?:NM_000546(?:\.\d+)?)?(?:\(?TP53\)?)?:?", "", q, flags=re.I)
+        q = re.sub(r"^c\.([-*]?\d+)_\1(del|dup)[ACGT]?$", r"c.\1\2", q)    # c.215_215del -> c.215del
+        if re.match(r"^p\.\(.*\)$", q, re.I):                            # p.(R175H) -> p.R175H
+            q = "p." + q[3:-1]
         d = self.df
         if re.match(r"^rs\d+$", q, re.I):
-            return d[d["rsid"].fillna("").str.lower() == q.lower()]
+            # ayni rsID birden fazla alleli kapsayabilir (rs1042522: P72R yaygin, P72H nadir) -> en sik ve kayitli olan once
+            hit = d[d["rsid"].fillna("").str.lower() == q.lower()]
+            score = (pd.to_numeric(hit["gnomad_af"], errors="coerce").fillna(0) * 1000
+                     + hit["erepo_class"].notna().astype(int) * 10 + hit["clinvar_vcv"].notna().astype(int) * 5)
+            return hit.loc[score.sort_values(ascending=False).index]
         m = re.match(r"^(?:chr)?17[-:_](\d+)[-:_]([ACGT]+)[-:_>]([ACGT]+)$", q, re.I)
         if m:
             pos, ref, alt = int(m.group(1)), m.group(2).upper(), m.group(3).upper()
@@ -223,6 +231,11 @@ class TP53Classifier:
             return d[d["c"] == c]
         p1 = p3_to_p1(q if q.startswith("p.") else "p." + q) if re.search(r"[A-Za-z]{3}\d", q) else q.upper().replace("P.", "")
         p1 = p1.replace("X", "*").replace("TER", "*")
+        if re.match(r"^(P\.)?\(?M(ET)?1\??\)?$", q.upper()):     # M1? / p.Met1? -> start kaybi
+            return d[d["consequence"] == "start_lost"]
+        ms = re.match(r"^([A-Z*])(\d+)\1$", p1)     # R213R -> R213= (sinonim)
+        if ms:
+            p1 = f"{ms.group(1)}{ms.group(2)}="
         hit = d[d["p1"] == p1]
         if len(hit) > 1:   # tek nukleotid degisimi ve en cok kanit tasiyan once
             score = (hit["c"].str.match(r"^c\.\d+[ACGT]>[ACGT]$").astype(int) * 100
@@ -622,8 +635,11 @@ class TP53Classifier:
         ev["PP5"] = Evidence("PP5", "athogenic" in g and "onflict" not in g, "No Influence" if "athogenic" in g else None,
                              f"ClinVar: {g or 'kayit yok'} ({_s(r.get('clinvar_review')) or '-'}). Franklin cift sayimi onlemek icin "
                              "PP5'i 'No influence' olarak gosterir.", "ClinVar")
-        ev["BP6"] = Evidence("BP6", "enign" in g and "onflict" not in g, "No Influence" if "enign" in g else None,
-                             f"ClinVar: {g or 'kayit yok'}.", "ClinVar")
+        # Franklin BP6'yi hala uyguluyor ve Strong sayiyor (V73M, R110H, R290H sayfalarinda goruldu, 31.10.2026)
+        bp6 = "enign" in g and "onflict" not in g and "athogenic" not in g
+        ev["BP6"] = Evidence("BP6", bp6, "Strong" if bp6 else None,
+                             f"ClinVar: {g or 'kayit yok'} ({_s(r.get('clinvar_review')) or '-'}). Franklin BP6'yi Strong uygular.",
+                             "ClinVar")
         # PM1 : Franklin hotspot yaklasimi -> iki benign missense arasindaki P missense yogunlugu
         pm1 = Evidence("PM1", False, reason="Missense degil.", source="Franklin-benzeri hotspot penceresi (ClinVar)")
         if csq == "missense" and codon is not None:
@@ -683,25 +699,53 @@ class TP53Classifier:
                              "Supporting" if csq == "synonymous" and sa is not None and sa < 0.1 else None,
                              "Sinonim ve splice etkisi ongorulmuyor." if csq == "synonymous" else "Sinonim degil.", "SpliceAI")
         # PS3 / PS4 / PP1 : Franklin bunlari ClinVar gonderim metninden cikarir; burada NCI verisiyle yaklasik
+        # PS3 / BS3: Franklin'in TP53 sayfalarindaki guc, VCEP Tablo S3 koduyla ayni (V73M BS3, R110H BS3_Supporting,
+        # R290H BS3). Once S3 kodu, yoksa Kato 2003 sinifi kullanilir.
         kato = _s(r.get("kato")) or _s(r.get("kato_nci"))
-        ps3 = Evidence("PS3", False, reason=f"Kato sinifi: {kato or 'yok'}.", source="NCI TP53 (Kato 2003) - yaklasik")
-        if csq == "missense" and kato and kato.lower().startswith("non"):
-            ps3 = Evidence("PS3", True, "Strong", "Kato 2003 maya transaktivasyonu: fonksiyonsuz.", "NCI TP53 (Kato 2003) - yaklasik")
-        elif csq == "missense" and kato and kato.lower().startswith("partial"):
-            ps3 = Evidence("PS3", True, "Supporting", "Kato 2003: kismen fonksiyonel.", "NCI TP53 (Kato 2003) - yaklasik")
-        ev["PS3"] = ps3
-        fam = _f(r.get("nci_germ_families")) or 0
-        ev["PS4"] = Evidence("PS4", fam >= 2, "Moderate" if fam >= 5 else "Supporting" if fam >= 2 else None,
-                             f"NCI germline veritabaninda {int(fam)} aile (LFS/LFL). Franklin bunu ClinVar metninden cikarir.",
-                             "NCI TP53 germline - yaklasik")
+        s3 = _s(r.get("s3_code")) or ""
+        m3 = re.match(r"^(PS3|BS3)(?:_(Very ?Strong|Strong|Moderate|Supporting))?$", s3.strip(), re.I)
+        ps3 = Evidence("PS3", False, reason=f"VCEP S3: {s3 or 'yok'}; Kato: {kato or 'yok'}.", source="VCEP Tablo S3 / Kato 2003")
+        bs3 = Evidence("BS3", False, reason=ps3.reason, source="VCEP Tablo S3 / Kato 2003")
+        if m3:
+            code3 = m3.group(1).upper()
+            st3 = (m3.group(2) or "Strong").lower().replace(" ", "")
+            st3 = {"verystrong": "Very Strong", "strong": "Strong", "moderate": "Moderate", "supporting": "Supporting"}[st3]
+            e3 = Evidence(code3, True, st3, f"VCEP Tablo S3 fonksiyonel kod: {s3}.", "VCEP Tablo S3")
+            ps3, bs3 = (e3, bs3) if code3 == "PS3" else (ps3, e3)
+        elif csq == "missense" and kato:
+            kl = kato.lower()
+            if kl.startswith("non"):
+                ps3 = Evidence("PS3", True, "Strong", "Kato 2003 maya transaktivasyonu: fonksiyonsuz.", "NCI TP53 (Kato 2003)")
+            elif kl.startswith("partial"):
+                ps3 = Evidence("PS3", True, "Supporting", "Kato 2003: kismen fonksiyonel.", "NCI TP53 (Kato 2003)")
+            elif kl.startswith("functional") or "supertrans" in kl:
+                bs3 = Evidence("BS3", True, "Strong", f"Kato 2003: {kato}.", "NCI TP53 (Kato 2003)")
+        ev["PS3"], ev["BS3"] = ps3, bs3
+        # BS2: Franklin TP53'te uzman paneli kaydindaki BS2'yi gosteriyor; burada eRepo kodu kullanilir
+        bs2c = next((x for x in (_s(r.get("erepo_met")) or "").split(";") if x.strip().startswith("BS2")), None)
+        if bs2c:
+            st2 = bs2c.strip().split("_")[1].title() if "_" in bs2c else "Strong"
+            ev["BS2"] = Evidence("BS2", True, st2, f"ClinGen uzman kaydi: {bs2c.strip()} (60 yas ustu kansersiz tasiyicilar).",
+                                 "ClinGen eRepo")
+        # PS4: yalnizca Li-Fraumeni fenotipli aileler (LFS, LFL, Chompret); populasyonda sik varyantlarda uygulanmaz
+        fam = _f(r.get("nci_germ_lfs_families")) or 0
+        common = ev["BA1"].met or ev["BS1"].met
+        ps4_st = None if common else "Moderate" if fam >= 5 else "Supporting" if fam >= 2 else None
+        ev["PS4"] = Evidence("PS4", ps4_st is not None, ps4_st,
+                             f"NCI germline veritabaninda Li-Fraumeni fenotipli (LFS/LFL/Chompret) {int(fam)} aile"
+                             + ("; varyant populasyonda sik oldugu icin uygulanmadi." if common and fam >= 2 else ".")
+                             + " Franklin bunu ClinVar metninden cikarir.", "NCI TP53 germline - yaklasik")
         ev["PP1"] = Evidence("PP1", False, reason="Kosegregasyon verisi otomatik cikarilamadi (LLM sekmesi ile ClinVar metninden bakin).",
                              source=H)
         for k in ("PS2", "PM3", "PM4", "PM6", "PP4", "BS2", "BS3", "BS4", "BP2", "BP3", "BP5"):
             ev.setdefault(k, Evidence(k, False, reason="Otomatik degerlendirilmedi (kullanici kaniti gerekir).", source=H, auto=False))
         evs = list(ev.values())
-        cls = richards_combine(evs)
-        return dict(classification=cls, met=[e.label for e in evs if e.met], evidence=[e.to_dict() for e in evs],
-                    engine="Franklin-benzeri genel ACMG (Richards 2015)")
+        # Franklin catisan kanitlari puanla birlestiriyor (R110H: PM2+PM5 ile BP6+BS3_Sup+BS2_Sup -> Likely Benign);
+        # bu, Tavtigian 2020 Bayes puan sistemiyle uyumlu. Richards 2015 tablosu sadece karsilastirma icin dondurulur.
+        pts = sum(e.points for e in evs if e.met)
+        cls = points_to_class(pts, evs)
+        return dict(classification=cls, points=pts, richards=richards_combine(evs), met=[e.label for e in evs if e.met],
+                    evidence=[e.to_dict() for e in evs], engine="Franklin-benzeri genel ACMG (puan sistemi)")
 
 
 def richards_combine(evs):

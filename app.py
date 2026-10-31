@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from pathlib import Path
 
 import altair as alt
@@ -14,6 +15,7 @@ import streamlit as st
 
 from tp53.acmg import (CATEGORY_ORDER, LFS_MODERATE, LFS_STRONG, Clinical, TP53Classifier)
 from tp53.common import DOMAINS, PROC, RAW, MODELS, p1_to_p3
+from tp53.help_texts import HELP, TOOL_INFO
 
 st.set_page_config(page_title="TP53-Franklin", page_icon="🧬", layout="wide")
 
@@ -40,6 +42,9 @@ st.markdown(f"""
 .pill {{display:inline-block; border-radius:12px; padding:2px 10px; margin:2px 4px 2px 0; font-size:.82rem;
         background:#eef1f7; border:1px solid #d9deea}}
 .muted {{color:#6b7080; font-size:.85rem}}
+.help {{border-left:4px solid #4a7bd0; background:#f1f6ff; border-radius:6px; padding:10px 14px; margin:4px 0 12px 0;
+        font-size:.9rem; color:#26324d}}
+.help b {{color:#1b2448}}
 </style>""", unsafe_allow_html=True)
 
 
@@ -98,6 +103,7 @@ with st.sidebar:
     st.caption(f"Veri: {gene['counts']['variants']:,} varyant · {gene['counts']['missense']:,} missense · "
                f"{gene['counts']['erepo']} uzman sınıflaması · {gene['counts']['clinvar']:,} ClinVar kaydı")
     st.caption("Kurallar: ClinGen TP53 VCEP v2.4 (CSpec GN009). Araştırma amaçlıdır; tanı/tedavi tavsiyesi değildir.")
+    SHOW_HELP = st.toggle("Açıklamaları göster", value=True, help="Her bölümün başındaki 'Bu bölüm ne anlatıyor?' kutuları")
 
 hits = clf.find(q)
 if not len(hits):
@@ -171,6 +177,15 @@ def class_strip(cls, title="Önerilen sınıflandırma", points=None):
                 f'{cls}{pts}</div><div style="display:flex;margin-top:8px">{dots}</div></div>', unsafe_allow_html=True)
 
 
+def explain(key, title="Bu bölüm ne anlatıyor?"):
+    """Konuyu bilmeyen kullanici icin bolum basi aciklama kutusu (kenar cubugundan kapatilabilir)."""
+    if not SHOW_HELP:
+        return
+    txt = HELP[key].replace("{v}", P1 or C)
+    with st.expander(f"ℹ️ {title}", expanded=True):
+        st.markdown(txt)
+
+
 def evidence_cards(res):
     evs = pd.DataFrame(res["evidence"])
     for cat in CATEGORY_ORDER:
@@ -200,7 +215,10 @@ def evidence_cards(res):
 
 # ====================================================================== 1) ACMG
 with tabs[0]:
+    explain("acmg_intro")
     with st.expander("➕ Klinik kanıt ekle (PS2, PS4, PP1, PP4, BS2, BS4, BP2)", expanded=False):
+        if SHOW_HELP:
+            st.info(HELP["acmg_form"])
         st.caption("Puan tabloları: Genome Medicine 2025 (TP53 VCEP v2) Tablo 2-3. LLM Asistanı sekmesinden ClinVar "
                    "metinlerinden öneri alıp buraya aktarabilirsiniz.")
         k = lambda n: f"{C}|{n}"
@@ -241,7 +259,7 @@ with tabs[0]:
         st.markdown(f'<div class="card"><div class="muted">Yalnızca otomatik (varyant) kanıtlar</div>'
                     f'<b style="color:{CLASS_COLOR[res["auto_classification"]]}">{res["auto_classification"]}</b> '
                     f'({res["auto_points"]:+d})<br><div class="muted" style="margin-top:6px">Franklin-benzeri genel ACMG</div>'
-                    f'<b style="color:{CLASS_COLOR[fr["classification"]]}">{fr["classification"]}</b><br>'
+                    f'<b style="color:{CLASS_COLOR[fr["classification"]]}">{fr["classification"]}</b> ({fr["points"]:+d})<br>'
                     f'<span class="muted">{", ".join(fr["met"])}</span></div>', unsafe_allow_html=True)
         if s(r.get("erepo_class")):
             st.markdown(f'<div class="card"><div class="muted">ClinGen uzman paneli (eRepo, v{s(r.get("erepo_version")) or "?"}, '
@@ -252,6 +270,7 @@ with tabs[0]:
                 unsafe_allow_html=True)
     for n in res["notes"]:
         st.info(n)
+    explain("acmg_cards", "Kriter kartları nasıl okunur?")
     mode = st.radio("Kanıt görünümü", ["ClinGen TP53 VCEP v2.4", "Franklin-benzeri genel ACMG"], horizontal=True)
     evidence_cards(res if mode.startswith("ClinGen") else fr)
 
@@ -294,6 +313,25 @@ def missense_distributions():
     return {t[0]: pd.to_numeric(m[t[0]], errors="coerce").dropna().values for t in TOOLS if t[0] in m}
 
 
+def norm_trait(t: str) -> str:
+    """ClinVar durum adlarini birlestirir: 'Li-Fraumeni syndrome 1', 'Li-fraumeni syndrome 1 (lfs1)' -> 'Li-Fraumeni syndrome'."""
+    import re as _re
+    t = _re.sub(r"\s*\([^)]*\)\s*$", "", t.strip())          # sondaki kisaltma: (LFS1)
+    t = _re.sub(r",?\s+\d+$", "", t)                           # sondaki alt tip numarasi: ' 1', ', 1'
+    return t[:1].upper() + t[1:] if t else t
+
+
+def traits_of(x) -> list:
+    out = []
+    for t in (s(x) or "").split(";"):
+        t = t.strip()
+        if t and not re.search(r"not provided|not specified", t, re.I):
+            n = norm_trait(t)
+            if n.lower() not in [o.lower() for o in out]:
+                out.append(n)
+    return out
+
+
 def verdict(v, d, hi, lo):
     if v is None:
         return "—"
@@ -303,6 +341,7 @@ def verdict(v, d, hi, lo):
 
 
 with tabs[1]:
+    explain("va_metrics")
     a, b, c3, d, e = st.columns(5)
     a.metric("Sonuç tipi", s(r.get("consequence")) or "—")
     b.metric("ClinVar (germline)", s(r.get("clinvar_germline")) or "kayıt yok")
@@ -311,6 +350,7 @@ with tabs[1]:
     e.metric("TP53 ML skoru", f(r.get("ml_path_score")))
 
     st.markdown("#### Bölge görüntüleyici (ClinVar ≥1★ ve ClinGen uzman sınıflamaları)")
+    explain("va_region", "Bu grafik nasıl okunur?")
     flt = st.radio("Filtre", ["Missense", "LOF (nonsense/frameshift/splice)", "Tümü"], horizontal=True, key="rv")
     reg = df[(pd.to_numeric(df.clinvar_stars, errors="coerce").fillna(0) >= 1) | df.erepo_class.notna()].copy()
     if flt.startswith("Missense"):
@@ -334,16 +374,21 @@ with tabs[1]:
     track = alt.Chart(dom).mark_rect(opacity=.85).encode(
         x=alt.X("start:Q", scale=xs), x2="end:Q", y="y0:Q", y2="y1:Q",
         color=alt.Color("ad:N", title="Domain", scale=alt.Scale(scheme="tableau10")), tooltip=["ad", "start", "end"])
-    rule = alt.Chart(pd.DataFrame({"codon": [float(r["codon"])] if s(r.get("codon")) else []})).mark_rule(
-        color=NAVY, strokeDash=[4, 3], size=2).encode(x=alt.X("codon:Q", scale=xs))
-    st.altair_chart(alt.layer(bars, track, rule).resolve_scale(color="independent").properties(height=260),
+    here = pd.DataFrame({"codon": [float(r["codon"])], "etiket": [f"▼ {P1 or C}"], "y": [ymax * 1.12]}) \
+        if s(r.get("codon")) else pd.DataFrame({"codon": [], "etiket": [], "y": []})
+    rule = alt.Chart(here).mark_rule(color="#7b2cbf", strokeDash=[5, 3], size=2.5).encode(x=alt.X("codon:Q", scale=xs))
+    label = alt.Chart(here).mark_text(color="#7b2cbf", fontWeight="bold", fontSize=13, dy=-4).encode(
+        x=alt.X("codon:Q", scale=xs), y=alt.Y("y:Q"), text="etiket:N")
+    st.altair_chart(alt.layer(bars, track, rule, label).resolve_scale(color="independent").properties(height=280),
                     width="stretch")
+    st.caption("Mor kesik çizgi ve etiket: aradığın varyantın proteindeki yeri.")
     up_pos = [x for x in gene["uniprot_features"] if x["type"] in ("Binding site", "Site") and s(r.get("codon"))
               and abs(float(x["start"]) - float(r["codon"])) <= 3]
     if up_pos:
         st.caption("Yakın UniProt fonksiyonel bölgeleri: " + "; ".join(f"{x['type']} {x['start']} {x['description']}" for x in up_pos))
 
     st.markdown("#### Klinik kanıt")
+    explain("va_clinical", "Bu kartlar ne anlatıyor?")
     c1, c2, c4 = st.columns(3)
     with c1:
         st.markdown(f"""<div class="card"><b>ClinGen eRepo (uzman paneli)</b><br>
@@ -358,12 +403,14 @@ with tabs[1]:
         <span class="muted">{(s(r.get('clinvar_traits')) or '')[:300]}</span></div>""", unsafe_allow_html=True)
     with c4:
         st.markdown(f"""<div class="card"><b>UniProt P04637</b><br>{s(r.get('uniprot_var')) or 'VAR_ kaydı yok'}<br>
-        {s(r.get('uniprot_sig')) or ''}<br><span class="muted">{(s(r.get('uniprot_desc')) or '')[:250]}</span><br>
+        <span class="muted">UniProt notu: {(s(r.get('uniprot_desc')) or '—')[:250]}</span><br>
+        <span class="muted">Derlenen klinik anlam (ClinVar/Ensembl, kriterli kayıtlar): {s(r.get('uniprot_sig')) or '—'}</span><br>
         <b>NCI germline</b>: {f(r.get('nci_germ_families'), 0)} aile, {f(r.get('nci_germ_individuals'), 0)} birey<br>
         <span class="muted">Birey kayıt sınıfları: {s(r.get('nci_germ_classes')) or '—'}</span></div>""",
                     unsafe_allow_html=True)
 
     st.markdown("#### Tahminler")
+    explain("va_pred", "Tahminler grafiği nasıl okunur?")
     dist = missense_distributions()
     rows = []
     for col, name, dirn, hi, lo, note in TOOLS:
@@ -372,8 +419,11 @@ with tabs[1]:
         pct = None
         if v is not None and col in dist and len(dist[col]):
             arr = dist[col]
-            pct = float(((arr <= v).mean() if dirn == 1 else (arr >= v).mean()) * 100)
+            # orta sira (midrank): esit degerler yuzdeligi sisirmesin
+            lo_, le_ = ((arr < v).mean(), (arr <= v).mean()) if dirn == 1 else ((arr > v).mean(), (arr >= v).mean())
+            pct = float((lo_ + le_) / 2 * 100)
         rows.append(dict(Araç=name, Skor=v, Yorum=verdict(v, dirn, hi, lo), **{"TP53 missense yüzdelik": pct},
+                         **{"Ne ölçer?": TOOL_INFO.get(col, "")},
                          Eşik=f"{'>=' if dirn == 1 else '<='}{hi}", Not=note))
     pt = pd.DataFrame(rows)
     if s(r.get("agvgd")):
@@ -383,16 +433,22 @@ with tabs[1]:
     if len(chart_df):
         ch = alt.Chart(chart_df).mark_bar().encode(
             y=alt.Y("Araç:N", sort=None, title=None), x=alt.X("TP53 missense yüzdelik:Q", scale=alt.Scale(domain=[0, 100]),
-                                                             title="TP53 missense varyantları içinde zararlılık yüzdeliği"),
+                                                             title="Sıralama: bu varyant TP53 varyantlarının yüzde kaçından daha zararlı bulundu (0-100)"),
             color=alt.Color("Yorum:N", scale=alt.Scale(domain=["Zararlı", "Belirsiz", "Benign"], range=[RED, "#c9cdd6", GREEN])),
-            tooltip=["Araç", "Skor", "Yorum", "TP53 missense yüzdelik", "Eşik"]).properties(height=26 * len(chart_df))
+            tooltip=["Araç", "Ne ölçer?", alt.Tooltip("Skor:Q", format=".3f"), "Yorum",
+                     alt.Tooltip("TP53 missense yüzdelik:Q", format=".0f"), "Eşik"]).properties(height=26 * len(chart_df))
         ch = ch.configure_axisY(labelLimit=260, labelOverlap=False)
         st.altair_chart(ch, width="stretch")
+        vc = pt[pt.Yorum.isin(["Zararlı", "Belirsiz", "Benign"])].Yorum.value_counts()
+        st.markdown(f"**Özet:** skoru olan {int(vc.sum())} aracın **{vc.get('Zararlı', 0)}** tanesi zararlı, "
+                    f"**{vc.get('Benign', 0)}** tanesi zararsız, **{vc.get('Belirsiz', 0)}** tanesi kararsız diyor. "
+                    f"ACMG'de kullanılan tek tahmin: VCEP Tablo S2 kodu **{s(r.get('s2_code')) or 'yok'}**.")
     st.dataframe(pt, hide_index=True, width="stretch",
                  column_config={"Skor": st.column_config.NumberColumn(format="%.4f"),
                                 "TP53 missense yüzdelik": st.column_config.ProgressColumn(min_value=0, max_value=100, format="%.0f")})
 
     st.markdown("#### Popülasyon frekansları")
+    explain("va_pop", "Popülasyon frekansı ne demek?")
     pops = json.loads(s(r.get("gnomad_pops")) or "{}")
     names = dict(afr="Afrika/Afro-Amerikan", amr="Latin Amerika", asj="Aşkenazi Yahudi*", eas="Doğu Asya", fin="Fin*",
                  mid="Orta Doğu*", nfe="Avrupa (Fin olmayan)", sas="Güney Asya", ami="Amish*", remaining="Diğer*")
@@ -417,6 +473,7 @@ with tabs[1]:
 # ====================================================================== 3) Fonksiyon & ML
 with tabs[2]:
     st.markdown("#### Fonksiyonel test sonuçları (VCEP Tablo S3)")
+    explain("fn_tests", "Fonksiyonel test nedir?")
     fa = pd.DataFrame([
         dict(Test="Kato 2003 – maya transaktivasyonu (8 promotör)", Sonuç=s(r.get("kato")) or s(r.get("kato_nci")) or "—",
              Ölçüt="≤%20 fonksiyonsuz, %20-75 kısmen, >%75 fonksiyonel"),
@@ -439,6 +496,10 @@ with tabs[2]:
                 st.dataframe(sub[keep], hide_index=True, width="stretch")
 
     st.markdown("#### Makine öğrenmesi")
+    if SHOW_HELP:
+        h1, h2 = st.columns(2)
+        h1.info(HELP["ml_a"])
+        h2.info(HELP["ml_b"])
     if s(r.get("ml_path_score")):
         c1, c2 = st.columns(2)
         with c1:
@@ -452,15 +513,26 @@ with tabs[2]:
                                     **{"Kısmen fonksiyonel (hipomorf)": float(r.get(f"ml_{m_}_partial") or 0)},
                                     Fonksiyonsuz=float(r.get(f"ml_{m_}_nonfunctional") or 0)) for m_ in ("B1", "B2")])
             st.markdown("**Model B: Kato sınıfı olasılıkları**")
-            st.dataframe(pb, hide_index=True, width="stretch",
-                         column_config={k_: st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.2f")
-                                        for k_ in ["Fonksiyonel", "Kısmen fonksiyonel (hipomorf)", "Fonksiyonsuz"]})
+            order = ["Fonksiyonel", "Kısmen fonksiyonel (hipomorf)", "Fonksiyonsuz"]
+            pl = pb.melt(id_vars="Model", var_name="sinif", value_name="olasilik")
+            pl["sira"] = pl["sinif"].map({k_: i_ for i_, k_ in enumerate(order)})
+            st.altair_chart(alt.Chart(pl).mark_bar().encode(
+                y=alt.Y("Model:N", title=None),
+                x=alt.X("olasilik:Q", stack="zero", scale=alt.Scale(domain=[0, 1]), title="Olasılık (toplam 1)"),
+                color=alt.Color("sinif:N", scale=alt.Scale(domain=order, range=[GREEN, "#e8a33d", RED]), legend=None),
+                order=alt.Order("sira:Q"),
+                tooltip=["Model", alt.Tooltip("sinif:N", title="Sınıf"), alt.Tooltip("olasilik:Q", title="Olasılık", format=".2f")])
+                .properties(height=alt.Step(30)), width="stretch")
+            st.caption("Yeşil: fonksiyonel · turuncu: kısmen fonksiyonel (hipomorf) · kırmızı: fonksiyonsuz")
+            st.dataframe(pb.round(2), hide_index=True, width="stretch")
             st.caption("B1: sekans + yapı + in-silico. B2: + Giacomelli/Funk/Kotler/Kawaguchi. 'Kısmen fonksiyonel' olasılığı "
                        "hipomorf aday skorudur.")
     else:
         st.info("ML tahmini yalnızca missense varyantlar için üretilir.")
     if METRICS:
         with st.expander("Model performansı (kodon gruplu 5 katlı çapraz doğrulama)", expanded=False):
+            if SHOW_HELP:
+                st.info(HELP["ml_perf"])
             A = METRICS["A_pathogenicity"]
             st.markdown(f"**Model A** – {A['n']} etiketli missense ({A['n_pos']} P/LP, {A['n_neg']} B/LB; "
                         f"{A['label_sources']}). En iyi: **{A['best']}**")
@@ -481,6 +553,7 @@ with tabs[2]:
 # ====================================================================== 4) Yayinlar
 with tabs[3]:
     st.markdown("#### Varyanta özgü yayınlar")
+    explain("pubs")
     gl = X["nci_germline"]
     refs = gl[gl["c"] == C] if len(gl) else pd.DataFrame()
     if len(refs):
@@ -508,6 +581,7 @@ with tabs[4]:
     st.markdown("Otozomal dominant **Li-Fraumeni sendromu** (MONDO:0018875). Hastalık mekanizması: fonksiyon kaybı ve "
                 "missense varyantlarda dominant-negatif / fonksiyon kazanımı. ClinGen TP53 VCEP (affiliation 50013) "
                 "gene özgü kuralları geçerlidir.")
+    explain("gene_dist", "Bu sekme ne anlatıyor?")
     g = df.copy()
     g["sig"] = g.erepo_class.fillna(g.clinvar_germline).fillna("")
     g["grup"] = "VUS/çelişkili/yok"
@@ -517,8 +591,11 @@ with tabs[4]:
     st.altair_chart(alt.Chart(tab).mark_bar().encode(
         y=alt.Y("consequence:N", sort="-x", title=None), x=alt.X("n:Q", title="ClinVar/eRepo varyant sayısı"),
         color=alt.Color("grup:N", scale=alt.Scale(domain=["P/LP", "VUS/çelişkili/yok", "B/LB"], range=[RED, "#c9cdd6", GREEN])),
-        tooltip=["consequence", "grup", "n"]).properties(height=330, title="Sonuç tipine göre sınıflama dağılımı"),
+        tooltip=["consequence", "grup", "n"]).properties(height=28 * tab.consequence.nunique(),
+                                                          title="Sonuç tipine göre sınıflama dağılımı")
+        .configure_axisY(labelOverlap=False, labelLimit=200),
         width="stretch")
+    explain("gene_hotspot", "Hotspot grafiği ne anlatıyor?")
     hs = pd.DataFrame([dict(kalıntı=v["residue"], tümör=v["tumorCount"]) for v in gene["hotspots"].values()])
     if len(hs):
         st.altair_chart(alt.Chart(hs.nlargest(25, "tümör")).mark_bar(color=TEAL).encode(
@@ -527,15 +604,19 @@ with tabs[4]:
     feats = pd.DataFrame(gene["uniprot_features"])
     if len(feats):
         with st.expander("UniProt P04637 bölge, motif ve bağlanma yerleri"):
+            if SHOW_HELP:
+                st.info(HELP["gene_uniprot"])
             st.dataframe(feats[feats.type.isin(["Region", "Motif", "DNA binding", "Binding site", "Site"])],
                          hide_index=True, width="stretch")
 
 # ====================================================================== 6) Iliskili hastaliklar
 with tabs[5]:
+    explain("dis_intro", "Bu sekme ne anlatıyor?")
     st.markdown("#### Bu varyant için bildirilen durumlar")
-    tr = s(r.get("clinvar_traits"))
+    tr = traits_of(r.get("clinvar_traits"))
     if tr:
-        st.markdown(" ".join(f'<span class="pill">{t.strip()}</span>' for t in tr.split(";") if t.strip()), unsafe_allow_html=True)
+        st.markdown(" ".join(f'<span class="pill">{t}</span>' for t in tr), unsafe_allow_html=True)
+        st.caption("ClinVar'da laboratuvarların bu varyantı değerlendirdiği durumlar; varyantın bu hastalığa yol açtığı anlamına gelmez.")
     else:
         st.caption("ClinVar germline trait kaydı yok.")
     gl = X["nci_germline"]
@@ -552,15 +633,16 @@ with tabs[5]:
             st.altair_chart(alt.Chart(tp).mark_bar(color=RED).encode(y=alt.Y("Tümör:N", sort="-x", title=None), x="n:Q")
                             .properties(height=22 * max(len(tp), 3)), width="stretch")
     st.markdown("#### TP53 ile ilişkili durumlar (gen düzeyi, ClinVar trait sıklığı)")
-    allt = df["clinvar_traits"].dropna().str.split("; ").explode().str.strip()
-    allt = allt[(allt != "") & ~allt.str.contains("not provided|not specified", case=False)]
+    allt = df["clinvar_traits"].dropna().map(traits_of).explode().dropna()
     st.dataframe(allt.value_counts().head(25).rename_axis("Durum").reset_index(name="TP53 varyant sayısı"),
                  hide_index=True, width="stretch")
+    st.caption("Aynı hastalığın farklı yazımları (ör. 'Li-Fraumeni syndrome 1') tek satırda birleştirildi.")
     st.caption("Ana tablo: Li-Fraumeni sendromu (OMIM 151623, MONDO:0018875, AD). VCEP LFS kanser listesi ACMG sekmesindeki "
                "klinik formda yer alır.")
 
 # ====================================================================== 7) Somatik
 with tabs[6]:
+    explain("som_intro", "Bu sekme ne anlatıyor?")
     c1, c2 = st.columns([1.2, 1])
     topo = X["nci_tumor_topography"]
     with c1:
@@ -585,11 +667,12 @@ with tabs[6]:
         else:
             st.caption("Bu kalıntı anlamlı hotspot listesinde değil.")
     st.markdown("#### Klinik kanıt (CIViC, ClinVar somatik)")
+    explain("som_civic", "CIViC tablosunun sütunları ne demek?")
     st.caption(f"ClinVar somatik klinik etki: {s(r.get('clinvar_somatic_tier')) or '—'} · Onkojenite: {s(r.get('clinvar_oncogenicity')) or '—'}")
     ce = X["civic_evidence"]
     if len(ce):
         scope_v = ce[ce.molecular_profile.str.fullmatch(f"TP53 {P1}", na=False)] if P1 else ce.iloc[0:0]
-        gene_lvl = ce[ce.molecular_profile.str.contains(r"TP53 (Mutation|Deleterious|Loss|ALTERATION|Wildtype)", na=False, case=False)]
+        gene_lvl = ce[ce.molecular_profile.str.contains(r"TP53 (?:Mutation|Deleterious|Loss|ALTERATION|Wildtype)", na=False, case=False)]
         st.markdown(f"**Varyant düzeyi:** {len(scope_v)} kanıt · **Gen düzeyi:** {len(gene_lvl)} kanıt")
         show = pd.concat([scope_v.assign(kapsam="Varyant"), gene_lvl.assign(kapsam="Gen")])
         if len(show):
@@ -602,6 +685,7 @@ with tabs[6]:
 # ====================================================================== 8) LLM
 with tabs[7]:
     from tp53 import llm
+    explain("llm_intro", "Bu sekme ne yapıyor? (3 adım)")
     models = llm.ollama_models()
     if not models:
         st.warning("Ollama'ya ulaşılamadı (http://localhost:11434). `ollama serve` çalışıyor mu?")
@@ -649,7 +733,10 @@ with tabs[7]:
                         families=sug["families"], vaf525=sug["vaf_5_25"], bs2=sug["bs2_females60"], use_expert=False)
                     st.rerun()
     st.divider()
-    if st.button("Sınıflandırmayı Türkçe açıkla (LLM)", disabled=not models):
+    st.markdown("##### İsteğe bağlı: rapor paragrafı")
+    st.caption("Yukarıdaki adımlardan bağımsızdır. ClinVar metnini okumaz; ACMG sekmesindeki son sınıfı ve karşılanan "
+               "kriterleri bir genetik raporundaki yorum paragrafı gibi Türkçe yazar. Puanı değiştirmez.")
+    if st.button("Rapor paragrafı yaz (LLM)", disabled=not models):
         with st.spinner("Yazılıyor..."):
             try:
                 st.markdown(llm.explain(f"{C} ({P3})", clf.vcep(C, clinical_from_state()), model))
@@ -658,6 +745,7 @@ with tabs[7]:
 
 # ====================================================================== 9) Veri kaynaklari
 with tabs[8]:
+    explain("data_intro", "Bu sekme ne anlatıyor?")
     st.markdown("#### İndirilen veri setleri (data/raw/MANIFEST.json)")
     if MANIFEST:
         st.dataframe(pd.DataFrame([dict(Kaynak=k, Dosya=v["file"], KB=round(v["bytes"] / 1024, 1), İndirme=v["downloaded_utc"],

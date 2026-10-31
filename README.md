@@ -116,21 +116,24 @@ yapılmasından kaynaklanır.
 
 Ters yönlü hata yok. Benign tarafta temkinli kalınır, çünkü TP53'te benign kanıtın önemli kısmı klinik veridir (BS2).
 
-**Franklin'in gerçek sitesi (7 varyant, 31.10.2026):** Franklin-benzeri mod 7 varyantın 6'sında aynı sınıfı veriyor
-(R175H, R248Q, Y220C, R273H, R213*, P72R; fark: R337H).
+**Franklin'in gerçek sitesi (10 varyant, 31.10.2026):** Franklin-benzeri mod 10 varyantın 9'unda aynı sınıfı veriyor
+(R175H, R248Q, Y220C, R273H, R213*, P72R, V73M, R110H, R290H; fark: R337H). Franklin çelişen kanıtları puanla
+birleştiriyor ve ClinVar'ın benign kararını BP6 olarak Strong sayıyor; Franklin modu bunu taklit eder. Bu yüzden
+Franklin modunun ClinVar ile uyumu (%97) kısmen döngüseldir; asıl karar VCEP motorundadır.
 
 **ML (kodon gruplu 5 katlı çapraz doğrulama):**
 
 | Model | Görev | Sonuç |
 |---|---|---|
 | A – TP53 Aggregated Prediction (lojistik, kalibre) | P/LP vs B/LB, 407 missense | ROC-AUC 0.983 (AlphaMissense tek başına 0.990, REVEL 0.970, ESM-2 0.925) |
-| B1 – sekans + yapı + in-silico (gradient boosting) | Kato sınıfı, 2.670 missense | Kısmen fonksiyonel AUC 0.72 · fonksiyonsuz AUC 0.91 |
+| B1 – sekans + yapı + in-silico (gradient boosting) | Kato sınıfı, 2.670 missense | Kısmen fonksiyonel AUC 0.73 · fonksiyonsuz AUC 0.91 |
 | B2 – B1 + diğer fonksiyonel testler | Kato sınıfı | 0.77 · 0.92 |
 
 **LLM (gemma4:12b, zero-shot):** R175H için ClinVar metinlerinden PS4_Moderate ve PP1_Moderate önerdi; ikisi de
 ClinGen uzman kaydıyla aynı.
 
-Yeniden üretmek için: `python scripts/validate_vcep.py` ve `python scripts/validate_clinvar.py`.
+Yeniden üretmek için: `python scripts/validate_vcep.py`, `python scripts/validate_clinvar.py`; arayüz testi için
+`python scripts/test_app.py`.
 
 ## Proje yapısı
 
@@ -150,6 +153,9 @@ scripts/
   validate_vcep.py      ClinGen uzman sınıflamalarıyla karşılaştırma
   validate_clinvar.py   ClinVar ≥ 2 yıldız kayıtlarla karşılaştırma
   test_llm.py           LLM modülü testi
+  test_app.py           uçtan uca arayüz testi (25 farklı girdi + klinik form)
+docs/
+  KULLANIM_REHBERI.md   örnekli kullanım rehberi
 ```
 
 ## Bilinen sınırlar

@@ -132,6 +132,11 @@ def hgb(classes=2):
 
 
 # ------------------------------------------------------------------ Model A
+def calibrated(fn):
+    """Sigmoid (Platt) kalibrasyonu: izotonik kalibrasyonun aksine skorlari basamaklara yigmaz (esit skor yigini olusmaz)."""
+    return CalibratedClassifierCV(fn(), method="sigmoid", cv=5)
+
+
 def train_pathogenicity(m):
     y, src = path_labels(m)
     lab = y.notna()
@@ -161,7 +166,7 @@ def train_pathogenicity(m):
         sc = -s[ok] if t in LOWER_IS_DAMAGING else s[ok]
         res["single_tools"][t] = {"roc_auc": round(float(roc_auc_score(yl[ok], sc)), 4), "coverage": round(float(ok.mean()), 3)}
     fn = lr if best == "logistic" else hgb
-    final = CalibratedClassifierCV(fn(), method="isotonic", cv=5)
+    final = calibrated(fn)
     final.fit(Xl, yl)
     score = final.predict_proba(X)[:, 1]
     res["best"] = best
@@ -201,7 +206,8 @@ def run():
     # egitim varyantlari icin capraz dogrulama disi skor
     lab = y.notna()
     XA = features(m, "A")[colsA]
-    oofA = _cv(lr if rA["best"] == "logistic" else hgb, XA[lab], y[lab].astype(int), m.loc[lab, "codon"])
+    fnA = lr if rA["best"] == "logistic" else hgb
+    oofA = _cv(lambda: calibrated(fnA), XA[lab], y[lab].astype(int), m.loc[lab, "codon"])   # ayni (kalibre) olcekte
     out.loc[lab, "ml_path_score"] = oofA
     out["ml_path_pct"] = out["ml_path_score"].rank(pct=True)
     metrics = {"A_pathogenicity": rA}

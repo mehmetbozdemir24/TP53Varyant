@@ -46,12 +46,12 @@
     ],
     "models": {
       "logistic": {
-        "roc_auc": 0.9828,
-        "pr_auc": 0.9871
+        "roc_auc": 0.9825,
+        "pr_auc": 0.9869
       },
       "gboost": {
-        "roc_auc": 0.9803,
-        "pr_auc": 0.9861
+        "roc_auc": 0.9801,
+        "pr_auc": 0.9859
       }
     },
     "single_tools": {
@@ -110,25 +110,25 @@
       "1": 681,
       "2": 589
     },
-    "macro_f1": 0.6441,
-    "balanced_acc": 0.6403,
-    "auc_partial_vs_rest": 0.7208,
-    "auc_nonfunc_vs_rest": 0.908,
+    "macro_f1": 0.6509,
+    "balanced_acc": 0.6463,
+    "auc_partial_vs_rest": 0.7192,
+    "auc_nonfunc_vs_rest": 0.9086,
     "confusion": [
       [
-        1203,
-        152,
-        45
+        1212,
+        148,
+        40
       ],
       [
-        336,
-        242,
-        103
+        339,
+        244,
+        98
       ],
       [
-        74,
-        99,
-        416
+        73,
+        95,
+        421
       ]
     ],
     "features": [
@@ -201,20 +201,20 @@
       "1": 681,
       "2": 589
     },
-    "macro_f1": 0.6919,
-    "balanced_acc": 0.6822,
-    "auc_partial_vs_rest": 0.7653,
-    "auc_nonfunc_vs_rest": 0.9231,
+    "macro_f1": 0.6895,
+    "balanced_acc": 0.6805,
+    "auc_partial_vs_rest": 0.7617,
+    "auc_nonfunc_vs_rest": 0.9221,
     "confusion": [
       [
-        1222,
-        151,
-        27
+        1219,
+        152,
+        29
       ],
       [
-        328,
-        286,
-        67
+        327,
+        284,
+        70
       ],
       [
         63,
