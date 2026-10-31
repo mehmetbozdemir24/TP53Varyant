@@ -1,0 +1,290 @@
+{
+  "A_pathogenicity": {
+    "n": 407,
+    "n_pos": 248,
+    "n_neg": 159,
+    "label_sources": {
+      "ClinVar": 271,
+      "ClinGen eRepo": 136
+    },
+    "features": [
+      "revel",
+      "alphamissense",
+      "bayesdel",
+      "varity_r",
+      "varity_er",
+      "sift",
+      "sift4g",
+      "polyphen2_hdiv",
+      "polyphen2_hvar",
+      "primateai",
+      "fathmm",
+      "fathmm_xf",
+      "mutationtaster",
+      "mutationassessor",
+      "provean",
+      "dann",
+      "metalr",
+      "metasvm",
+      "metarnn",
+      "clinpred",
+      "vest4",
+      "mvp",
+      "mpc",
+      "esm1b",
+      "eve",
+      "gmvp",
+      "deogen2",
+      "cadd_phred",
+      "gerp",
+      "phylop100",
+      "phastcons100",
+      "lrt",
+      "agvgd_num",
+      "esm2_llr",
+      "esm2_entropy"
+    ],
+    "models": {
+      "logistic": {
+        "roc_auc": 0.9828,
+        "pr_auc": 0.9871
+      },
+      "gboost": {
+        "roc_auc": 0.9803,
+        "pr_auc": 0.9861
+      }
+    },
+    "single_tools": {
+      "revel": {
+        "roc_auc": 0.9703,
+        "coverage": 0.946
+      },
+      "alphamissense": {
+        "roc_auc": 0.9895,
+        "coverage": 0.946
+      },
+      "bayesdel": {
+        "roc_auc": 0.9782,
+        "coverage": 0.961
+      },
+      "varity_r": {
+        "roc_auc": 0.9718,
+        "coverage": 0.946
+      },
+      "cadd_phred": {
+        "roc_auc": 0.9132,
+        "coverage": 0.961
+      },
+      "esm1b": {
+        "roc_auc": 0.9626,
+        "coverage": 0.946
+      },
+      "primateai": {
+        "roc_auc": 0.8933,
+        "coverage": 0.912
+      },
+      "eve": {
+        "roc_auc": 0.9552,
+        "coverage": 0.872
+      },
+      "polyphen2_hvar": {
+        "roc_auc": 0.9502,
+        "coverage": 0.946
+      },
+      "sift": {
+        "roc_auc": 0.8761,
+        "coverage": 0.946
+      },
+      "esm2_llr": {
+        "roc_auc": 0.9247,
+        "coverage": 1.0
+      }
+    },
+    "best": "logistic"
+  },
+  "B1_function": {
+    "kind": "B1",
+    "n": 2670,
+    "class_counts": {
+      "0": 1400,
+      "1": 681,
+      "2": 589
+    },
+    "macro_f1": 0.6441,
+    "balanced_acc": 0.6403,
+    "auc_partial_vs_rest": 0.7208,
+    "auc_nonfunc_vs_rest": 0.908,
+    "confusion": [
+      [
+        1203,
+        152,
+        45
+      ],
+      [
+        336,
+        242,
+        103
+      ],
+      [
+        74,
+        99,
+        416
+      ]
+    ],
+    "features": [
+      "revel",
+      "alphamissense",
+      "bayesdel",
+      "varity_r",
+      "varity_er",
+      "sift",
+      "sift4g",
+      "polyphen2_hdiv",
+      "polyphen2_hvar",
+      "primateai",
+      "fathmm",
+      "fathmm_xf",
+      "mutationtaster",
+      "mutationassessor",
+      "provean",
+      "dann",
+      "metalr",
+      "metasvm",
+      "metarnn",
+      "clinpred",
+      "vest4",
+      "mvp",
+      "mpc",
+      "esm1b",
+      "eve",
+      "gmvp",
+      "deogen2",
+      "cadd_phred",
+      "gerp",
+      "phylop100",
+      "phastcons100",
+      "lrt",
+      "agvgd_num",
+      "esm2_llr",
+      "esm2_entropy",
+      "codon",
+      "dom_TAD1",
+      "dom_TAD2",
+      "dom_Prolin",
+      "dom_DNA ba",
+      "dom_Mentes",
+      "dom_Oligom",
+      "dom_C-term",
+      "hyd_wt",
+      "hyd_mut",
+      "hyd_delta",
+      "vol_wt",
+      "vol_mut",
+      "vol_delta",
+      "chg_wt",
+      "chg_mut",
+      "chg_delta",
+      "grantham",
+      "to_pro",
+      "from_gly",
+      "to_gly",
+      "cys_change",
+      "zinc_site",
+      "dna_contact"
+    ]
+  },
+  "B2_function": {
+    "kind": "B2",
+    "n": 2670,
+    "class_counts": {
+      "0": 1400,
+      "1": 681,
+      "2": 589
+    },
+    "macro_f1": 0.6919,
+    "balanced_acc": 0.6822,
+    "auc_partial_vs_rest": 0.7653,
+    "auc_nonfunc_vs_rest": 0.9231,
+    "confusion": [
+      [
+        1222,
+        151,
+        27
+      ],
+      [
+        328,
+        286,
+        67
+      ],
+      [
+        63,
+        82,
+        444
+      ]
+    ],
+    "features": [
+      "revel",
+      "alphamissense",
+      "bayesdel",
+      "varity_r",
+      "varity_er",
+      "sift",
+      "sift4g",
+      "polyphen2_hdiv",
+      "polyphen2_hvar",
+      "primateai",
+      "fathmm",
+      "fathmm_xf",
+      "mutationtaster",
+      "mutationassessor",
+      "provean",
+      "dann",
+      "metalr",
+      "metasvm",
+      "metarnn",
+      "clinpred",
+      "vest4",
+      "mvp",
+      "mpc",
+      "esm1b",
+      "eve",
+      "gmvp",
+      "deogen2",
+      "cadd_phred",
+      "gerp",
+      "phylop100",
+      "phastcons100",
+      "lrt",
+      "agvgd_num",
+      "esm2_llr",
+      "esm2_entropy",
+      "codon",
+      "dom_TAD1",
+      "dom_TAD2",
+      "dom_Prolin",
+      "dom_DNA ba",
+      "dom_Mentes",
+      "dom_Oligom",
+      "dom_C-term",
+      "hyd_wt",
+      "hyd_mut",
+      "hyd_delta",
+      "vol_wt",
+      "vol_mut",
+      "vol_delta",
+      "chg_wt",
+      "chg_mut",
+      "chg_delta",
+      "grantham",
+      "to_pro",
+      "from_gly",
+      "to_gly",
+      "cys_change",
+      "zinc_site",
+      "dna_contact",
+      "giacomelli_lof",
+      "funk_lof",
+      "kotler_lof"
+    ]
+  }
+}

@@ -1,0 +1,25 @@
+# ham ve islenmis veri (scripts/download.py + run_pipeline.py ile yeniden uretilir)
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+data/*.txt
+models/*.joblib
+
+# gecici kesif betikleri
+scripts/explore*.py
+scripts/probe.py
+
+# python / ortam
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+.ipynb_checkpoints/
+.streamlit/secrets.toml
+
+# IDE
+.idea/
+.jbeval/
+.vscode/
