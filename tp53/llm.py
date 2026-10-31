@@ -183,15 +183,32 @@ def to_clinical_suggestion(ev: dict):
                 bs2_females60=int(ev.get("healthy_female_carriers_over60") or 0))
 
 
-def explain(variant: str, vcep_result: dict, model: str | None = None, timeout=180):
-    """Siniflandirma sonucunu Turkce, Franklin'deki ozet paragrafina benzer sekilde anlatir."""
+def explain(variant: str, vcep_result: dict, model: str | None = None, timeout=180, ml: dict | None = None):
+    """Siniflandirma sonucunu Turkce, klinik rapor yorum paragrafi gibi anlatir.
+
+    Girdi: kural motorunun sinifi, puani ve karsilanan kriterleri. Istege bagli `ml`: Model A/B ciktilari.
+    ML ciktilari ACMG puanina DAHIL DEGILDIR; istemde ayri bir blokta "destekleyici bilgi" olarak verilir ve modelden
+    bunlari tek cumleyle, siniflandirmanin dayanagi olmadigini belirterek anmasi istenir. Neden ayri: Model A,
+    PP3'te zaten kullanilan BayesDel/Align-GVGD gibi skorlari da girdi aldigi icin puana eklemek cift sayim olur ve
+    model ClinGen'in olabilirlik orani cercevesiyle kalibre edilmemistir.
+    """
     model = model or DEFAULT_MODEL
     met = [e for e in vcep_result["evidence"] if e["met"] and e["points"] != 0]
     lines = "\n".join(f"- {e['label']} ({e['points']:+d}): {e['reason']}" for e in met)
+    ml_block = ""
+    if ml and ml.get("ml_path_score") is not None:
+        b = {k: ml.get(f"ml_B1_{k}") for k in ("functional", "partial", "nonfunctional")}
+        ml_block = ("\n\nDestekleyici makine ogrenmesi tahminleri (ACMG puanina DAHIL DEGIL, TP53'e ozel modeller):\n"
+                    f"- Model A patojenite olasiligi: {ml['ml_path_score']:.2f}\n")
+        if all(v is not None for v in b.values()):
+            ml_block += (f"- Model B (Kato fonksiyon sinifi): fonksiyonel {b['functional']:.2f}, "
+                         f"kismen fonksiyonel {b['partial']:.2f}, fonksiyonsuz {b['nonfunctional']:.2f}\n")
     prompt = (f"TP53 {variant} varyantinin ClinGen TP53 VCEP v2.4 ile siniflandirmasi: {vcep_result['classification']} "
-              f"(toplam {vcep_result['points']} puan).\nKarsilanan kriterler:\n{lines}\n\n"
+              f"(toplam {vcep_result['points']} puan).\nKarsilanan kriterler:\n{lines}{ml_block}\n\n"
               "Bunu bir klinik genetik raporundaki yorum paragrafi gibi, 5-7 cumlelik akici Turkce ile ozetle. "
-              "Yeni bilgi uydurma, sadece verilen kanitlari kullan. Kalin yazi ve madde isareti kullanma.")
+              "Yeni bilgi uydurma, sadece verilen kanitlari kullan. Kalin yazi ve madde isareti kullanma."
+              + (" Makine ogrenmesi tahminlerini yalnizca son cumlede, ACMG siniflandirmasina dahil olmayan destekleyici "
+                 "bilgi oldugunu acikca belirterek an; siniflandirmayi bunlara dayandirma." if ml_block else ""))
     r = requests.post(f"{OLLAMA}/api/chat", json={"model": model, "stream": False, "think": False,
                                                    "options": {"temperature": 0.2, "num_predict": 800},
                                                    "messages": [{"role": "user", "content": prompt}]}, timeout=timeout)

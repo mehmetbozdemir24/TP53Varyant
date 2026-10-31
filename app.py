@@ -188,6 +188,65 @@ def explain(key, title="Bu bölüm ne anlatıyor?"):
         st.markdown(txt)
 
 
+def _num(x):
+    v = pd.to_numeric(x, errors="coerce")
+    return None if pd.isna(v) else float(v)
+
+
+def ml_compare():
+    """Bu varyant icin modellerimizi diger araclar ve bilinen gercek sonucla yan yana koyar."""
+    st.markdown("##### Karşılaştırma: modellerimiz, hazır araçlar ve bilinen gerçek sonuç")
+    def yon(v, hi, lo, low_bad=False):
+        if v is None:
+            return "—"
+        if low_bad:
+            return "🔴 zararlı" if v <= hi else "🟢 zararsız" if v > lo else "⚪ arada"
+        return "🔴 zararlı" if v >= hi else "🟢 zararsız" if v <= lo else "⚪ arada"
+    rows = []
+    sA = _num(r.get("ml_path_score"))
+    rows.append(dict(Kaynak="Model A (bizim, TP53'e özel)", Değer=f"{sA:.3f}" if sA is not None else "—", Yorum=yon(sA, .5, .5)))
+    for col, name, hi, lo, lb in (("alphamissense", "AlphaMissense", .564, .34, False), ("revel", "REVEL", .644, .29, False),
+                                  ("bayesdel_vcep", "BayesDel", .16, -.008, False), ("esm1b", "ESM1b", -7.5, -7.5, True)):
+        v = _num(r.get(col))
+        rows.append(dict(Kaynak=name, Değer=f"{v:.3f}" if v is not None else "—", Yorum=yon(v, hi, lo, lb)))
+    code = s(r.get("s2_code")) or "—"
+    rows.append(dict(Kaynak="VCEP Tablo S2 (ACMG'ye giren)", Değer=code,
+                     Yorum="🔴 zararlı" if code.lower().startswith("pp3") else "🟢 zararsız" if code.lower().startswith("bp4") else "⚪ kanıt yok"))
+    truth_src, truth = None, None
+    if s(r.get("erepo_class")):
+        truth_src, truth = "ClinGen uzman paneli", r["erepo_class"]
+    elif s(r.get("clinvar_germline")) and (_num(r.get("clinvar_stars")) or 0) >= 1:
+        truth_src, truth = f"ClinVar, {int(_num(r.get('clinvar_stars')))}★", r["clinvar_germline"]
+    c1, c2 = st.columns([1.25, 1])
+    with c1:
+        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+    with c2:
+        if truth:
+            t_path = "athogenic" in truth and "onflict" not in truth and "enign" not in truth
+            t_ben = "enign" in truth and "onflict" not in truth and "athogenic" not in truth
+            if sA is not None and (t_path or t_ben):
+                ok = (sA >= .5) == t_path
+                st.markdown(f"**Bilinen sonuç ({truth_src}):** {truth}<br>Model A {'✅ aynı yönde' if ok else '❌ farklı yönde'} "
+                            f"({sA:.2f})", unsafe_allow_html=True)
+            else:
+                st.markdown(f"**Bilinen sonuç ({truth_src}):** {truth}", unsafe_allow_html=True)
+        else:
+            st.markdown("**Bilinen sonuç:** uzman paneli veya güvenilir ClinVar kaydı yok; Model A burada gerçek bir "
+                        "tahmin yapıyor.")
+        kato = s(r.get("kato"))
+        b = {k_: _num(r.get(f"ml_B1_{k_}")) for k_ in ("functional", "partial", "nonfunctional")}
+        if all(v is not None for v in b.values()):
+            names = {"functional": "Functional", "partial": "Partially functional", "nonfunctional": "Non-functional"}
+            pred = names[max(b, key=b.get)]
+            if kato in names.values():
+                st.markdown(f"**Kato testi (gerçek ölçüm):** {kato}<br>Model B1 tahmini: {pred} "
+                            f"{'✅' if pred == kato else '❌'}", unsafe_allow_html=True)
+            else:
+                st.markdown(f"**Kato testi:** ölçüm yok · Model B1 tahmini: **{pred}** (test edilmemiş varyant için tahmin)",
+                            unsafe_allow_html=True)
+        st.caption("Eğitimdeki varyantlarda gösterilen skorlar, modelin o varyantı görmediği turdan gelir (sızıntısız).")
+
+
 def points_table(res):
     """Karsilanan kriterlerin puan hesabi: hangi kanit kac puan getirdi, toplam ve sinif."""
     evs = pd.DataFrame(res["evidence"])
@@ -561,6 +620,7 @@ with tabs[2]:
             st.dataframe(pb.round(2), hide_index=True, width="stretch")
             st.caption("B1: sekans + yapı + in-silico. B2: + Giacomelli/Funk/Kotler/Kawaguchi. 'Kısmen fonksiyonel' olasılığı "
                        "hipomorf aday skorudur.")
+        ml_compare()
     else:
         st.info("ML tahmini yalnızca missense varyantlar için üretilir.")
     if METRICS:
@@ -769,11 +829,13 @@ with tabs[7]:
     st.divider()
     st.markdown("##### İsteğe bağlı: rapor paragrafı")
     st.caption("Yukarıdaki adımlardan bağımsızdır. ClinVar metnini okumaz; ACMG sekmesindeki son sınıfı ve karşılanan "
-               "kriterleri bir genetik raporundaki yorum paragrafı gibi Türkçe yazar. Puanı değiştirmez.")
+               "kriterleri bir genetik raporundaki yorum paragrafı gibi Türkçe yazar. Model A/B tahminlerini son cümlede, "
+               "ACMG'ye dahil olmayan destekleyici bilgi olarak anar. Puanı değiştirmez.")
     if st.button("Rapor paragrafı yaz (LLM)", disabled=not models):
         with st.spinner("Yazılıyor..."):
             try:
-                st.markdown(llm.explain(f"{C} ({P3})", clf.vcep(C, clinical_from_state()), model))
+                ml_info = {k_: _num(r.get(k_)) for k_ in ("ml_path_score", "ml_B1_functional", "ml_B1_partial", "ml_B1_nonfunctional")}
+                st.markdown(llm.explain(f"{C} ({P3})", clf.vcep(C, clinical_from_state()), model, ml=ml_info))
             except Exception as ex:
                 st.error(f"LLM hatası: {ex}")
 

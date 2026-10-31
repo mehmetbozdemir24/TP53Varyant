@@ -398,7 +398,7 @@ Model B ek girdisi (28):
 Model B etiketi: 2 (Kato: Non-functional)     B1 çıktısı: fonksiyonel 0.01 / kısmen 0.32 / fonksiyonsuz 0.67
 ```
 
-Model A ve B'nin çıktıları ACMG puanına eklenmez ve LLM'e girdi olarak verilmez; yalnızca arayüzde gösterilir.
+Model A ve B'nin çıktıları ACMG puanına eklenmez. Arayüzde "Karşılaştırma" panelinde hazır araçlar ve bilinen gerçek sonuçla (uzman paneli / ClinVar, Kato testi) yan yana gösterilir; rapor paragrafı isteminde de ayrı bir "destekleyici, ACMG'ye dahil değil" bloğu olarak LLM'e verilir (bkz. 7.4).
 
 ### 6.1 Özellikler
 
@@ -520,8 +520,13 @@ oturuma yazar, `use_expert=False` yapar ve sayfayı yeniden çalıştırır. Hi�
 
 ### 7.4 Rapor paragrafı
 
-`explain()` LLM'e yalnızca motorun sonucu ve karşılanan kriterlerin listesini verir; 5-7 cümlelik Türkçe yorum
-paragrafı ister (sıcaklık 0.2). Puanı etkilemez, ClinVar metnini okumaz.
+`explain()` LLM'e motorun sonucunu ve karşılanan kriterlerin listesini, ayrıca ayrı bir blokta Model A olasılığını ve
+Model B sınıf olasılıklarını verir; 5-7 cümlelik Türkçe yorum paragrafı ister (sıcaklık 0.2). İstem, ML tahminlerinin
+yalnızca son cümlede ve ACMG sınıflandırmasına dahil olmadığı belirtilerek anılmasını, sınıflandırmanın bunlara
+dayandırılmamasını ister. ML puana eklenmez çünkü (1) Model A, PP3'te zaten kullanılan BayesDel ve Align-GVGD'yi de
+girdi alır (çift sayım) ve (2) ClinGen'in olabilirlik oranı çerçevesiyle (Pejaver 2022) kalibre edilmemiştir.
+Franklin de kendi "Aggregated Prediction" skorunu ekranda gösterir; PP3/BP4 için ise yardım sayfasına göre REVEL
+eşiklerini kullanır. Puanı etkilemez, ClinVar metnini okumaz.
 
 ---
 

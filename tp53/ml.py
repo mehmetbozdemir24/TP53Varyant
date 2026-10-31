@@ -27,7 +27,8 @@ Model B - fonksiyon / hipomorf (3 sinifli siniflandirici, gradient boosting)
                     giacomelli_lof=1, funk_lof=1, kotler_lof=1   etiket 2 (Non-functional)
                     ->  B1 cikti fonksiyonel 0.01 / kismen 0.32 / fonksiyonsuz 0.67
 
-Ne A ne B ACMG puanina eklenir; LLM'e de girdi olarak verilmez. Yalnizca arayuzde bilgi olarak gosterilir.
+Ne A ne B ACMG puanina eklenir (PP3'teki skorlarla cift sayim olur; ClinGen olabilirlik orani kalibrasyonu yok).
+Arayuzde bilgi olarak ve 'Rapor paragrafi' isteminde ayri, 'destekleyici, ACMG'ye dahil degil' blogu olarak kullanilir.
 Dogrulama: kodona gore gruplu 5 katli capraz dogrulama (ayni kodondaki varyantlar ayni katta).
 Calistirma: python -m tp53.ml
 """
