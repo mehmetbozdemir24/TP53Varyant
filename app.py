@@ -268,6 +268,29 @@ def _num(x):
     return None if pd.isna(v) else float(v)
 
 
+def model_a_inputs():
+    """Secili varyant icin Model A'ya giren 35 ozellik, degeri ve kaynagi."""
+    from tp53.ml import INSILICO
+    esm = PROC / "esm2_llr.csv"
+    e2 = {}
+    if esm.exists() and P1:
+        ed = pd.read_csv(esm)
+        ed = ed[(ed["wt"] + ed["pos"].astype(str) + ed["mut"]) == P1]
+        if len(ed):
+            e2 = {"esm2_llr": float(ed["esm2_llr"].iloc[0]), "esm2_entropy": float(ed["esm2_entropy"].iloc[0])}
+    out = []
+    for col in INSILICO + ["esm2_llr", "esm2_entropy"]:
+        if col == "agvgd_num":
+            g = re.sub(r"\D", "", s(r.get("agvgd")) or "")
+            v, src = (float(g) if g else None), "VCEP Tablo S2 (Align-GVGD sınıfı)"
+        elif col.startswith("esm2"):
+            v, src = e2.get(col), "ESM-2 (bizim çalıştırmamız)"
+        else:
+            v, src = _num(r.get(col)), "dbNSFP (MyVariant.info)"
+        out.append({"Girdi": col, "Değer": "eksik (medyanla doldurulur)" if v is None else f"{v:.4g}", "Kaynak": src})
+    return pd.DataFrame(out)
+
+
 def ml_compare():
     """Bu varyant icin modellerimizi diger araclar ve bilinen gercek sonucla yan yana koyar."""
     st.markdown("##### Karşılaştırma: bu varyantta modellerimiz ne dedi, gerçek sonuç ne?")
@@ -297,6 +320,10 @@ def ml_compare():
     c1, c2 = st.columns([1.25, 1])
     with c1:
         st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+        st.caption("Burada yalnızca en önemli 4 araç var. Tüm araçlar: Varyant Değerlendirme → Tahminler. "
+                   "Model A'ya giren 35 sayının tamamı aşağıda.")
+        with st.popover("Model A'ya giren 35 sayının tamamı"):
+            st.dataframe(model_a_inputs(), hide_index=True, width="stretch", height=420)
     with c2:
         if truth:
             t_path = "athogenic" in truth and "onflict" not in truth and "enign" not in truth
