@@ -209,11 +209,39 @@ def roc_data():
     return pd.DataFrame(out), aucs, int(lab.sum())
 
 
+@st.cache_data(show_spinner=False)
+def split_info():
+    """Capraz dogrulamada her turdaki egitim/test buyuklukleri (ml.py ile ayni ayar: 5 kat, kodon gruplu, tohum 42)."""
+    from sklearn.model_selection import StratifiedGroupKFold
+    from tp53.ml import kato_labels, path_labels
+    m = df[df.consequence == "missense"].copy()
+    m["codon"] = pd.to_numeric(m["codon"], errors="coerce")
+    out = []
+    for name, y in (("Model A (patojenite)", path_labels(m)[0]), ("Model B1 / B2 (fonksiyon)", kato_labels(m))):
+        lab = y.notna()
+        yl, g = y[lab].astype(int), m.loc[lab, "codon"]
+        cv = StratifiedGroupKFold(5, shuffle=True, random_state=42)
+        sp = list(cv.split(yl, yl, g))
+        tr, te = [len(a) for a, _ in sp], [len(b) for _, b in sp]
+        out.append({"Model": name, "Etiketli varyant": len(yl), "Kodon (grup)": int(g.nunique()),
+                    "Her turda eğitim": f"{min(tr)}–{max(tr)} (~%80)", "Her turda test": f"{min(te)}–{max(te)} (~%20)",
+                    "Ayrı doğrulama seti": "yok", "Son model": f"{len(yl)} varyantın tamamıyla"})
+    return pd.DataFrame(out)
+
+
 def perf_charts():
     """Model A: ROC egrisi; Model B1/B2: gercek sinif -> tahmin yuzdesi isi haritasi."""
     if SHOW_HELP:
         st.info("Modeller, eğitimde hiç görmedikleri varyantlar üzerinde sınanır: aynı kodondaki varyantlar hep aynı "
                 "gruba konur, model 4 grupla eğitilip 5. grupta test edilir, bu 5 kez tekrarlanır.")
+    st.markdown("**Veri nasıl bölündü?**")
+    st.dataframe(split_info(), hide_index=True, width="stretch")
+    st.caption("Sabit bir eğitim/doğrulama/test ayrımı yok; bunun yerine 5 katlı çapraz doğrulama yapıldı. Etiketli "
+               "varyantlar 5 gruba bölünür (aynı kodondakiler hep aynı grupta), her turda 4 grupla eğitilip kalan 1 grupla "
+               "test edilir; 5 tur sonunda her varyant tam 1 kez test edilmiş olur. Aşağıdaki grafikler bu 5 test turunun "
+               "birleşimidir. Hiperparametreler sabit seçildiği için ayrı bir doğrulama seti kullanılmadı; Model A'da "
+               "lojistik regresyon ile gradient boosting arasındaki seçim aynı çapraz doğrulamayla yapıldığından sonuç "
+               "çok hafif iyimser olabilir. Ekranda gösterilen son model, etiketli verinin tamamıyla eğitilir.")
     c1, c2 = st.columns([1, 1.15])
     with c1:
         st.markdown("**Model A: patojeniği benign'den ayırabiliyor mu?**")
