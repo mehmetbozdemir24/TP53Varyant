@@ -188,6 +188,81 @@ def explain(key, title="Bu bölüm ne anlatıyor?"):
         st.markdown(txt)
 
 
+@st.cache_data(show_spinner=False)
+def roc_data():
+    """Model A ve tek araclarin ROC egrileri: etiketli 407 missense uzerinde (Model A icin sizintisiz OOF skor)."""
+    from sklearn.metrics import roc_auc_score, roc_curve
+    from tp53.ml import path_labels
+    m = df[df.consequence == "missense"].copy()
+    y, _ = path_labels(m)
+    lab = y.notna()
+    out, aucs = [], {}
+    for col, name, low_bad in (("ml_path_score", "Model A (bizim)", False), ("alphamissense", "AlphaMissense", False),
+                               ("revel", "REVEL", False), ("bayesdel", "BayesDel", False), ("sift", "SIFT", True)):
+        v = pd.to_numeric(m.loc[lab, col], errors="coerce")
+        ok = v.notna()
+        sc = -v[ok] if low_bad else v[ok]
+        fpr, tpr, _ = roc_curve(y[lab][ok].astype(int), sc)
+        aucs[name] = roc_auc_score(y[lab][ok].astype(int), sc)
+        lbl = f"{name} (AUC {aucs[name]:.3f})"
+        out += [dict(model=lbl, fpr=a_, tpr=b_) for a_, b_ in zip(fpr, tpr)]
+    return pd.DataFrame(out), aucs, int(lab.sum())
+
+
+def perf_charts():
+    """Model A: ROC egrisi; Model B1/B2: gercek sinif -> tahmin yuzdesi isi haritasi."""
+    if SHOW_HELP:
+        st.info("Modeller, eğitimde hiç görmedikleri varyantlar üzerinde sınanır: aynı kodondaki varyantlar hep aynı "
+                "gruba konur, model 4 grupla eğitilip 5. grupta test edilir, bu 5 kez tekrarlanır.")
+    c1, c2 = st.columns([1, 1.15])
+    with c1:
+        st.markdown("**Model A: patojeniği benign'den ayırabiliyor mu?**")
+        rd, aucs, n = roc_data()
+        ch = alt.Chart(rd).mark_line(interpolate="step-after").encode(
+            x=alt.X("fpr:Q", title="Yanlış alarm oranı (benign'e 'patojenik' deme)", scale=alt.Scale(domain=[0, 1])),
+            y=alt.Y("tpr:Q", title="Yakalama oranı (patojeniği bulma)", scale=alt.Scale(domain=[0, 1])),
+            color=alt.Color("model:N", title=None, legend=alt.Legend(orient="bottom-right", labelLimit=260)),
+            strokeWidth=alt.condition(alt.datum.model == [k_ for k_ in rd.model.unique() if k_.startswith("Model A")][0],
+                                      alt.value(3.5), alt.value(1.5)))
+        diag = alt.Chart(pd.DataFrame({"x": [0, 1], "y": [0, 1]})).mark_line(strokeDash=[4, 4], color="#bbb").encode(x="x", y="y")
+        st.altair_chart((ch + diag).properties(height=330), width="stretch")
+        st.caption(f"{n} etiketli varyant. Eğri sol üst köşeye ne kadar yakınsa model o kadar iyi; kesikli çizgi yazı-turadır. "
+                   "AUC 1 = kusursuz, 0.5 = rastgele. Bizim model çoğu aracı geçiyor, AlphaMissense'e çok yakın ama onu geçmiyor.")
+    with c2:
+        st.markdown("**Model B: Kato sınıfını ne kadar doğru buluyor?**")
+        cls = ["Fonksiyonel", "Kısmen", "Fonksiyonsuz"]
+        rows = []
+        for k in ("B1_function", "B2_function"):
+            if k not in METRICS:
+                continue
+            B = METRICS[k]
+            for i, gt in enumerate(cls):
+                tot = sum(B["confusion"][i])
+                for j, pr in enumerate(cls):
+                    nij = B["confusion"][i][j]
+                    rows.append(dict(model=f"{B['kind']}" + (" (+ lab. testleri)" if B["kind"] == "B2" else " (dizi + araçlar)"),
+                                     gercek=gt, tahmin=pr, n=nij, oran=nij / tot if tot else 0))
+        cm = pd.DataFrame(rows)
+        if len(cm):
+            base = alt.Chart(cm).encode(x=alt.X("tahmin:N", sort=cls, title="Modelin tahmini"),
+                                        y=alt.Y("gercek:N", sort=cls, title="Gerçek (Kato testi)"))
+            heat = base.mark_rect().encode(color=alt.Color("oran:Q", scale=alt.Scale(scheme="blues", domain=[0, 1]), legend=None),
+                                           tooltip=["gercek", "tahmin", "n", alt.Tooltip("oran:Q", format=".0%")])
+            txt = base.mark_text(fontSize=13).encode(text=alt.Text("oran:Q", format=".0%"),
+                                                     color=alt.condition(alt.datum.oran > .5, alt.value("white"), alt.value("#1b2448")))
+            st.altair_chart((heat + txt).properties(width=190, height=190).facet(
+                column=alt.Column("model:N", title=None, header=alt.Header(labelFontWeight="bold"))), width="content")
+            st.caption("Her satır gerçek bir sınıftaki varyantlardır; hücre, onların yüzde kaçına modelin hangi sınıfı dediğidir. "
+                       "Köşegen (sol üstten sağ alta) doğru tahminlerdir. Fonksiyonsuz ve fonksiyonel iyi bulunuyor; "
+                       "'kısmen' sınıfı en zoru, çoğu 'fonksiyonel' sanılıyor. Laboratuvar testleri eklenince (B2) iyileşiyor.")
+    A = METRICS.get("A_pathogenicity", {})
+    if A:
+        st.caption(f"Model A eğitim verisi: {A['n']} varyant ({A['n_pos']} patojenik, {A['n_neg']} benign; "
+                   f"{A['label_sources'].get('ClinGen eRepo', 0)} uzman paneli, {A['label_sources'].get('ClinVar', 0)} ClinVar). "
+                   f"Seçilen algoritma: {'lojistik regresyon' if A.get('best') == 'logistic' else 'gradient boosting'}. "
+                   "Not: REVEL, VARITY gibi bazı araçlar ClinVar ile eğitildiği için skorları olduğundan iyi görünebilir.")
+
+
 def _num(x):
     v = pd.to_numeric(x, errors="coerce")
     return None if pd.isna(v) else float(v)
@@ -195,7 +270,9 @@ def _num(x):
 
 def ml_compare():
     """Bu varyant icin modellerimizi diger araclar ve bilinen gercek sonucla yan yana koyar."""
-    st.markdown("##### Karşılaştırma: modellerimiz, hazır araçlar ve bilinen gerçek sonuç")
+    st.markdown("##### Karşılaştırma: bu varyantta modellerimiz ne dedi, gerçek sonuç ne?")
+    st.caption("Soldaki tablo patojenite tahminleridir (Model A ve hazır araçlar). Sağda Model A ve Model B'nin "
+               "(B1 ve B2) bilinen gerçek sonuçla karşılaştırması var.")
     def yon(v, hi, lo, low_bad=False):
         if v is None:
             return "—"
@@ -234,16 +311,19 @@ def ml_compare():
             st.markdown("**Bilinen sonuç:** uzman paneli veya güvenilir ClinVar kaydı yok; Model A burada gerçek bir "
                         "tahmin yapıyor.")
         kato = s(r.get("kato"))
-        b = {k_: _num(r.get(f"ml_B1_{k_}")) for k_ in ("functional", "partial", "nonfunctional")}
-        if all(v is not None for v in b.values()):
-            names = {"functional": "Functional", "partial": "Partially functional", "nonfunctional": "Non-functional"}
-            pred = names[max(b, key=b.get)]
-            if kato in names.values():
-                st.markdown(f"**Kato testi (gerçek ölçüm):** {kato}<br>Model B1 tahmini: {pred} "
-                            f"{'✅' if pred == kato else '❌'}", unsafe_allow_html=True)
-            else:
-                st.markdown(f"**Kato testi:** ölçüm yok · Model B1 tahmini: **{pred}** (test edilmemiş varyant için tahmin)",
-                            unsafe_allow_html=True)
+        names = {"functional": "Functional", "partial": "Partially functional", "nonfunctional": "Non-functional"}
+        tr = {"Functional": "fonksiyonel", "Partially functional": "kısmen fonksiyonel", "Non-functional": "fonksiyonsuz"}
+        lines_ = []
+        for mk, desc in (("B1", "dizi + araçlar"), ("B2", "+ laboratuvar testleri")):
+            b = {k_: _num(r.get(f"ml_{mk}_{k_}")) for k_ in names}
+            if all(v is not None for v in b.values()):
+                pred = names[max(b, key=b.get)]
+                mark = ("✅" if pred == kato else "❌") if kato in names.values() else ""
+                lines_.append(f"Model {mk} ({desc}): {tr[pred]} %{100 * max(b.values()):.0f} {mark}")
+        if lines_:
+            head = (f"**Kato testi (gerçek ölçüm):** {tr.get(kato, kato)}" if kato in names.values()
+                    else "**Kato testi:** ölçüm yok (aşağıdakiler test edilmemiş varyant için tahmin)")
+            st.markdown(head + "<br>" + "<br>".join(lines_), unsafe_allow_html=True)
         st.caption("Eğitimdeki varyantlarda gösterilen skorlar, modelin o varyantı görmediği turdan gelir (sızıntısız).")
 
 
@@ -599,8 +679,9 @@ with tabs[2]:
             st.markdown(f"""<div class="card"><b>TP53 Aggregated Prediction (Model A)</b><br>
             <span class="cls" style="color:{RED if float(r['ml_path_score']) >= .5 else GREEN}">{float(r['ml_path_score']):.3f}</span>
             <span class="muted"> · TP53 missense yüzdeliği %{100 * float(r['ml_path_pct']):.0f}</span><br>
-            <span class="muted">Franklin'in toplu tahmin skorunun TP53'e özel karşılığı: in-silico skorlar → kalibre lojistik/GB model.
-            Eğitimdeki varyantlar için çapraz doğrulama dışı (sızıntısız) skor gösterilir.</span></div>""", unsafe_allow_html=True)
+            <span class="muted">Bu sayı, Model A'nın bu varyantın 35 araç skorunu (REVEL, AlphaMissense, SIFT ...) girdi alarak
+            hesapladığı patojenik olma olasılığıdır (0 zararsız – 1 zararlı). Varyant eğitim setindeyse, onu hiç görmemiş
+            modelin skoru gösterilir. Franklin'deki "Aggregated Prediction" skorunun TP53'e özel karşılığıdır.</span></div>""", unsafe_allow_html=True)
         with c2:
             pb = pd.DataFrame([dict(Model=m_, Fonksiyonel=float(r.get(f"ml_{m_}_functional") or 0),
                                     **{"Kısmen fonksiyonel (hipomorf)": float(r.get(f"ml_{m_}_partial") or 0)},
@@ -618,31 +699,15 @@ with tabs[2]:
                 .properties(height=alt.Step(30)), width="stretch")
             st.caption("Yeşil: fonksiyonel · turuncu: kısmen fonksiyonel (hipomorf) · kırmızı: fonksiyonsuz")
             st.dataframe(pb.round(2), hide_index=True, width="stretch")
-            st.caption("B1: sekans + yapı + in-silico. B2: + Giacomelli/Funk/Kotler/Kawaguchi. 'Kısmen fonksiyonel' olasılığı "
-                       "hipomorf aday skorudur.")
+            st.caption("B1 ve B2 aynı soruyu soran iki ayrı modeldir. B1: araç skorları + amino asit özellikleri. "
+                       "B2: bunlara ek olarak diğer laboratuvar testlerinin (Giacomelli, Funk, Kotler, Kawaguchi) sonuçları. "
+                       "Varyant laboratuvarda test edilmişse B2 daha güvenilirdir; edilmemişse B1'e bakın.")
         ml_compare()
     else:
         st.info("ML tahmini yalnızca missense varyantlar için üretilir.")
     if METRICS:
-        with st.expander("Model performansı (kodon gruplu 5 katlı çapraz doğrulama)", expanded=False):
-            if SHOW_HELP:
-                st.info(HELP["ml_perf"])
-            A = METRICS["A_pathogenicity"]
-            st.markdown(f"**Model A** – {A['n']} etiketli missense ({A['n_pos']} P/LP, {A['n_neg']} B/LB; "
-                        f"{A['label_sources']}). En iyi: **{A['best']}**")
-            perf = [dict(Yöntem=f"TP53 ML ({k})", ROC_AUC=v["roc_auc"], Kapsam=1.0) for k, v in A["models"].items()]
-            perf += [dict(Yöntem=k, ROC_AUC=v["roc_auc"], Kapsam=v["coverage"]) for k, v in A["single_tools"].items()]
-            st.dataframe(pd.DataFrame(perf).sort_values("ROC_AUC", ascending=False), hide_index=True)
-            st.caption("Tek araç AUC'leri yalnızca skoru olan alt kümede hesaplanmıştır. Not: REVEL/VARITY gibi araçlar "
-                       "ClinVar etiketleriyle eğitildiği için döngüsellik (circularity) riski vardır.")
-            for k in ("B1_function", "B2_function"):
-                if k in METRICS:
-                    B = METRICS[k]
-                    st.markdown(f"**Model {B['kind']}** – n={B['n']}, macro-F1 {B['macro_f1']}, dengeli doğruluk {B['balanced_acc']}, "
-                                f"AUC(kısmen vs diğer) {B['auc_partial_vs_rest']}, AUC(fonksiyonsuz vs diğer) {B['auc_nonfunc_vs_rest']}")
-                    st.dataframe(pd.DataFrame(B["confusion"], index=["gerçek F", "gerçek Kısmen", "gerçek Fsuz"],
-                                              columns=["tahmin F", "tahmin Kısmen", "tahmin Fsuz"]))
-            st.caption("ESM-2 maskeli marjinal LLR hesaplanmışsa (scripts/esm2_llr.py) özellik olarak otomatik eklenir.")
+        with st.expander("Modeller ne kadar başarılı? (kodon gruplu 5 katlı çapraz doğrulama)", expanded=False):
+            perf_charts()
 
 # ====================================================================== 4) Yayinlar
 with tabs[3]:
