@@ -15,7 +15,7 @@ import streamlit as st
 
 from tp53.acmg import (CATEGORY_ORDER, LFS_MODERATE, LFS_STRONG, Clinical, TP53Classifier)
 from tp53.common import DOMAINS, PROC, RAW, MODELS, p1_to_p3
-from tp53.help_texts import HELP, NOTATION, TOOL_INFO
+from tp53.help_texts import CATEGORY_TR, CODE_TR, HELP, NOTATION, TOOL_INFO
 
 st.set_page_config(page_title="TP53-Franklin", page_icon="🧬", layout="wide")
 
@@ -188,7 +188,29 @@ def explain(key, title="Bu bölüm ne anlatıyor?"):
         st.markdown(txt)
 
 
-def evidence_cards(res):
+def points_table(res):
+    """Karsilanan kriterlerin puan hesabi: hangi kanit kac puan getirdi, toplam ve sinif."""
+    evs = pd.DataFrame(res["evidence"])
+    met = evs[evs.met & (evs.points != 0)].copy()
+    if met.empty:
+        st.caption("Puan getiren kriter yok.")
+        return
+    met["Grup"] = met.category.map(lambda c_: CATEGORY_TR.get(c_, (c_, ""))[0])
+    met["Ne diyor?"] = met.code.map(lambda c_: CODE_TR.get(c_, ""))
+    met["Yön"] = met.points.map(lambda p_: "🔴 patojenik" if p_ > 0 else "🟢 benign")
+    met = met.sort_values("points", ascending=False)
+    tab = met[["label", "Grup", "Ne diyor?", "Yön", "points"]].rename(columns={"label": "Kriter", "points": "Puan"})
+    total = int(met.points.sum())
+    st.markdown("**Puan hesabı** – sınıf bu tablodaki puanların toplamından çıkar:")
+    st.dataframe(tab, hide_index=True, width="stretch",
+                 column_config={"Puan": st.column_config.NumberColumn(format="%+d")})
+    terms = " ".join(f"{'+' if p_ > 0 else '−'} {abs(int(p_))} ({l_})" for l_, p_ in zip(tab.Kriter, tab.Puan)).lstrip("+ ")
+    st.markdown(f"{terms} = **{total:+d} puan → {res['classification']}**  "
+                f"<span class='muted'>(≥10 Patojenik · 6-9 Olası patojenik · -1..5 VUS · -2..-6 Olası benign · ≤-7 Benign)</span>",
+                unsafe_allow_html=True)
+
+
+def evidence_cards(res, show_empty=False):
     evs = pd.DataFrame(res["evidence"])
     for cat in CATEGORY_ORDER:
         sub = evs[evs.category == cat]
@@ -197,22 +219,29 @@ def evidence_cards(res):
         met = sub[sub.met & (sub.points != 0)]
         noinf = sub[sub.met & (sub.points == 0)]
         unmet = sub[~sub.met]
-        st.markdown(f"##### {cat}")
+        if met.empty and noinf.empty and not show_empty:
+            continue
+        tr, q_ = CATEGORY_TR.get(cat, (cat, ""))
+        st.markdown(f"##### {tr} <span class='muted'>({cat})</span>", unsafe_allow_html=True)
+        if q_:
+            st.markdown(f"<div class='muted' style='margin:-6px 0 4px 2px'>Soru: {q_}</div>", unsafe_allow_html=True)
         if met.empty and noinf.empty:
-            st.markdown('<div class="unmet">Karşılanan kriter yok</div>', unsafe_allow_html=True)
+            st.markdown('<div class="unmet">Bu grupta karşılanan kriter yok</div>', unsafe_allow_html=True)
         for _, e in pd.concat([met, noinf]).iterrows():
             col = RED if e.code.startswith("P") else GREEN
             if e.points == 0:
                 col = GREY
-            kind = ("Patojenik" if e.code.startswith("P") else "Benign") + f" {e.strength or ''}"
+            kind = ("Patojenik yönde" if e.code.startswith("P") else "Benign yönde") + f", {e.strength or ''}"
             src = f'<div class="muted">Kaynak: {e.source}{"" if e.auto else " · klinik/kullanıcı kanıtı"}</div>'
+            plain = CODE_TR.get(e.code, "")
             st.markdown(f'<div class="ev"><div class="badge" style="background:{col}">{e.label}<small>{e.strength or ""}'
-                        f' · {e.points:+d}</small></div><div><b>{kind}:</b> {e.description}<br>{e.reason}{src}</div></div>',
+                        f' · {e.points:+d} puan</small></div><div><b>{plain}</b> <span class="muted">({kind})</span><br>'
+                        f'{e.reason}<br><span class="muted">ACMG tanımı: {e.description}</span>{src}</div></div>',
                         unsafe_allow_html=True)
         if not unmet.empty:
             items = "; ".join(f"<b>{u.code}</b>" + ("" if u.applicable else " (TP53'te uygulanmaz)") +
                               f": <span title='{u.reason}'>{u.reason[:140]}</span>" for _, u in unmet.iterrows())
-            st.markdown(f'<div class="unmet">KARŞILANMAYAN: {items}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="unmet">Bu grupta karşılanmayanlar: {items}</div>', unsafe_allow_html=True)
 
 
 # ====================================================================== 1) ACMG
@@ -274,7 +303,10 @@ with tabs[0]:
         st.info(n)
     explain("acmg_cards", "Kriter kartları nasıl okunur?")
     mode = st.radio("Kanıt görünümü", ["ClinGen TP53 VCEP v2.4", "Franklin-benzeri genel ACMG"], horizontal=True)
-    evidence_cards(res if mode.startswith("ClinGen") else fr)
+    view = res if mode.startswith("ClinGen") else fr
+    points_table(view)
+    show_empty = st.toggle("Kriter karşılanmayan grupları da göster", value=False)
+    evidence_cards(view, show_empty)
 
 # ====================================================================== 2) Varyant degerlendirme
 TOOLS = [  # (kolon, ad, yon, esik-zararli, esik-benign, aciklama)

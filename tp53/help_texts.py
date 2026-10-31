@@ -24,10 +24,17 @@ HELP = {
         "hesaplanır. Varsayılan olarak, varyant uzman panelinde kayıtlıysa uzmanların klinik kodları kullanılır."
     ),
     "acmg_cards": (
-        "Aşağıdaki her kart bir kriterdir. Soldaki renkli kutu: kriterin adı, gücü ve puanı (kırmızı = patojenik yön, "
-        "yeşil = benign yön, gri = puana etkisiz). Sağda neden karşılandığı ve verinin kaynağı yazar. Gri "
-        "\"KARŞILANMAYAN\" satırı, o grupta hangi kriterlerin neden uygulanmadığını söyler. \"Kanıt görünümü\" ile "
-        "aynı varyantı TP53 uzman kurallarıyla veya Franklin'in genel kurallarıyla görebilirsin."
+        "Kararın nasıl çıktığını iki parça gösterir.\n\n"
+        "**1. Puan hesabı tablosu:** varyant hakkında bulunan her kanıt bir satırdır. \"Ne diyor?\" kanıtı düz "
+        "Türkçe anlatır; Puan sütunu o kanıtın getirdiği puandır (🔴 patojenik yönde artı, 🟢 benign yönde eksi). "
+        "Altındaki satır toplamı ve sınıfı gösterir.\n\n"
+        "**2. Kanıt grupları:** ACMG kanıtları 12 soruya ayırır (ör. \"Laboratuvar testleri\": protein bozuk mu "
+        "çıktı?). Her grubun altında soru yazar; renkli kutu o soruya verilen cevaptır: kutunun adı kriter kodu "
+        "(PS3, PM1...), altında gücü ve puanı. Kod okuması: **P** = patojenik, **B** = benign yönde; ikinci harf gücü "
+        "söyler: **VS** çok güçlü (8), **S** güçlü (4), **M** orta (2), **P** destekleyici (1). \"_Moderate\" gibi ek, "
+        "gücün kuralın varsayılanından farklı olduğunu söyler. Varsayılan olarak sadece kanıt bulunan gruplar "
+        "gösterilir.\n\n"
+        "\"Kanıt görünümü\" ile aynı varyantı TP53 uzman kurallarıyla veya Franklin'in genel kurallarıyla görebilirsin."
     ),
     # ------------------------------------------------------------------ Varyant degerlendirme
     "va_metrics": (
@@ -237,3 +244,37 @@ R213X ve p.Arg213Ter aynı şeydir.
 **Arama kutusuna yazılabilenler:** R175H · p.Arg175His · c.524G>A · TP53:c.524G>A · chr17-7578406-C-T (hg19) ·
 17-7675088-C-T (hg38) · rs28934578 · R213R (sinonim) · M1? (başlangıç kaybı)
 """
+
+# ACMG kanit gruplari: (Turkce baslik, grubun sordugu soru). Anahtarlar Franklin'deki Ingilizce grup adlari.
+CATEGORY_TR = {
+    "Functional Studies": ("Laboratuvar testleri", "Laboratuvarda protein bozuk mu çıktı, normal mi?"),
+    "Segregation Data": ("Aile içi geçiş", "Varyant ailede kanserli kişilerle birlikte mi geçiyor?"),
+    "Case Control Studies": ("Hasta sayısı", "Varyant Li-Fraumeni kriterlerine uyan kaç hastada görüldü?"),
+    "Population Data": ("Toplumdaki sıklık", "Varyant sağlıklı insanlarda ne kadar sık?"),
+    "Effect on Protein": ("Proteine etkisi", "Değişiklik proteini kesiyor mu, bilinen zararlı bir değişime benziyor mu?"),
+    "Functional Data": ("Kritik bölge", "Varyant proteinin önemli / sık bozulan bir bölgesinde mi?"),
+    "In-silico Predictions": ("Bilgisayar tahminleri", "Tahmin araçları (BayesDel + Align-GVGD) zararlı diyor mu?"),
+    "Reputable Source Data": ("Başka kaynakların kararı", "ClinVar gibi kaynaklar ne diyor? (TP53 kurallarında kullanılmaz)"),
+    "De Novo Data": ("Yeni ortaya çıkma (de novo)", "Varyant anne-babada yokken çocukta mı ortaya çıktı?"),
+    "Allelic Data": ("Diğer kopya", "Aynı kişide başka bir zararlı TP53 varyantı var mı?"),
+    "Phenotype": ("Klinik tablo", "Hastanın bulguları bu gene özgü mü? (TP53'te: kanda düşük oranlı varyant)"),
+    "Alternate Locus": ("Başka açıklama", "Hastalığı başka bir gen açıklıyor mu?"),
+}
+
+# Kriter kodunun sade anlami (ust ozet tablosu icin)
+CODE_TR = {
+    "PVS1": "Protein kesiliyor / hiç üretilmiyor", "PS1": "Aynı amino asit değişimi zaten patojenik",
+    "PS2": "Anne-babada yok, çocukta yeni ortaya çıkmış", "PS3": "Laboratuvarda protein bozuk çıktı",
+    "PS4": "Li-Fraumeni hastalarında beklenenden sık", "PM1": "Sık bozulan kritik bölgede (hotspot)",
+    "PM2": "Sağlıklı insanlarda çok nadir / hiç yok", "PM4": "Protein uzunluğu değişiyor",
+    "PM5": "Aynı pozisyonda başka patojenik değişim var", "PM6": "Varsayılan de novo",
+    "PP1": "Ailede kanserle birlikte geçiyor", "PP2": "Bu gende missense genelde patojenik",
+    "PP3": "Tahmin araçları zararlı diyor", "PP4": "Kanda düşük oranlı varyant (klonal hematopoez ipucu)",
+    "PP5": "Başka kaynak patojenik diyor", "BA1": "Toplumda çok yaygın (tek başına benign)",
+    "BS1": "Hastalık için fazla yaygın", "BS2": "60 yaş üstü kansersiz taşıyıcılar var",
+    "BS3": "Laboratuvarda protein normal çıktı", "BS4": "Ailede kanserle birlikte geçmiyor",
+    "BP1": "Bu gende missense genelde zararsız", "BP2": "Aynı kişide başka zararlı varyant var",
+    "BP3": "Tekrar bölgesinde çerçeveyi bozmayan değişim", "BP4": "Tahmin araçları zararsız diyor",
+    "BP5": "Hastalığı başka gen açıklıyor", "BP6": "Başka kaynak benign diyor",
+    "BP7": "Sinonim ve splice etkisi yok",
+}
