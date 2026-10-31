@@ -15,7 +15,7 @@ import streamlit as st
 
 from tp53.acmg import (CATEGORY_ORDER, LFS_MODERATE, LFS_STRONG, Clinical, TP53Classifier)
 from tp53.common import DOMAINS, PROC, RAW, MODELS, p1_to_p3
-from tp53.help_texts import HELP, TOOL_INFO
+from tp53.help_texts import HELP, NOTATION, TOOL_INFO
 
 st.set_page_config(page_title="TP53-Franklin", page_icon="🧬", layout="wide")
 
@@ -99,6 +99,8 @@ with st.sidebar:
         if cols[i % 3].button(ex, width="stretch"):
             st.session_state["q"] = ex
             st.rerun()
+    with st.expander("📖 Bu yazılar nasıl okunur? (R175H, R213*, c.375+1G>A ...)"):
+        st.markdown(NOTATION)
     st.divider()
     st.caption(f"Veri: {gene['counts']['variants']:,} varyant · {gene['counts']['missense']:,} missense · "
                f"{gene['counts']['erepo']} uzman sınıflaması · {gene['counts']['clinvar']:,} ClinVar kaydı")

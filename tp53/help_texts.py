@@ -186,3 +186,54 @@ TOOL_INFO = {
     "dbscsnv_ada": "Ekson sınırına yakın değişimlerde splice bozulması olasılığı.",
     "dbscsnv_rf": "Ekson sınırına yakın değişimlerde splice bozulması olasılığı (rastgele orman).",
 }
+
+# Kenar cubugundaki "Bu yazilar nasil okunur?" kutusu
+NOTATION = """
+Varyantlar iki dille yazılır. **Harf–sayı–harf** proteindeki değişikliği, **c.** ile başlayan yazım DNA'daki
+değişikliği anlatır (HGVS kuralı).
+
+**Protein: R175H**
+R = normal amino asit (Arginin) · 175 = proteindeki sırası (TP53'te 393 amino asit var) · H = yerine gelen (Histidin).
+Uzun yazımı: p.Arg175His.
+
+| Harf | Amino asit | Harf | Amino asit |
+|---|---|---|---|
+| A | Alanin | M | Metiyonin |
+| C | Sistein | N | Asparajin |
+| D | Aspartat | P | Prolin |
+| E | Glutamat | Q | Glutamin |
+| F | Fenilalanin | R | Arginin |
+| G | Glisin | S | Serin |
+| H | Histidin | T | Treonin |
+| I | İzolösin | V | Valin |
+| K | Lizin | W | Triptofan |
+| L | Lösin | Y | Tirozin |
+
+**Yıldız (\\*): R213\\*** — 213. sırada "dur" sinyali; protein orada biter (nonsense, genelde zararlı).
+R213X ve p.Arg213Ter aynı şeydir.
+
+**DNA: c.743G>A** — kodlayan DNA'nın 743. harfi G iken A olmuş. 3 DNA harfi 1 amino asit kodladığı için
+743 ÷ 3 ≈ 248 → bu, R248Q'nun DNA yazımıdır.
+
+**c.215del** — 215. harf silinmiş; okuma çerçevesi kayar (frameshift), protein bozulur.
+
+**c.375+1G>A** — 375. harften sonraki ara bölgenin (intron) 1. harfi değişmiş. Ekson sınırındaki ilk 2 harf
+"birleştirme" sinyalidir; bozulunca splicing bozulur.
+
+| İşaret | Anlamı | Örnek |
+|---|---|---|
+| `>` | bir harf başka harfe dönüştü | c.524G>A |
+| `del` | silindi | c.215del |
+| `dup` | bir kopya fazladan eklendi | c.1179dup |
+| `ins` | araya harf eklendi | c.636_637insT |
+| `delins` | silinip yerine başka harf kondu | c.743_744delinsAA |
+| `fs` | çerçeve kayması | R213fs |
+| `=` | amino asit değişmedi (sinonim) | R213= |
+| `+5`, `-2` | intronda, eksonun sonundan sonra / başından önce | c.375+5G>A, c.1101-2A>G |
+| `c.-29` | proteinin başlangıcından önceki kısım (5' UTR) | c.-29+1G>T |
+| `c.*1175` | "dur" sinyalinden sonraki kısım (3' UTR) | c.*1175A>C |
+| `_` | aralık: şuradan şuraya | c.637_640del |
+
+**Arama kutusuna yazılabilenler:** R175H · p.Arg175His · c.524G>A · TP53:c.524G>A · chr17-7578406-C-T (hg19) ·
+17-7675088-C-T (hg38) · rs28934578 · R213R (sinonim) · M1? (başlangıç kaybı)
+"""
