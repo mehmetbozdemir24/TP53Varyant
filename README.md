@@ -10,6 +10,9 @@ metinlerinden klinik kanıt çıkarımı da içerir.
 📘 **Ayrıntılı, örnekli kullanım rehberi:** [docs/KULLANIM_REHBERI.md](docs/KULLANIM_REHBERI.md)
 (ekranlar, klinik kanıt formu, LLM asistanı, kural / ML / LLM ayrımı, doğrulama yöntemi)
 
+🛠️ **Teknik kılavuz (geliştirici / yöntem):** [docs/TEKNIK_KILAVUZ.md](docs/TEKNIK_KILAVUZ.md)
+(veri kaynakları ve okuyucular, tablo şeması, her kriterin eşiği, Franklin modu, ML ve LLM ayrıntıları, bakım)
+
 *English summary: An open-data, TP53-focused re-implementation of the Franklin variant interpretation page.
 Classification follows the ClinGen TP53 VCEP v2.4 Bayesian point system; TP53-specific ML models and a local LLM
 (Ollama) for evidence extraction from ClinVar submissions are added on top. Validated against 189 ClinGen expert
@@ -156,6 +159,7 @@ scripts/
   test_app.py           uçtan uca arayüz testi (25 farklı girdi + klinik form)
 docs/
   KULLANIM_REHBERI.md   örnekli kullanım rehberi
+  TEKNIK_KILAVUZ.md     teknik kılavuz
 ```
 
 ## Bilinen sınırlar

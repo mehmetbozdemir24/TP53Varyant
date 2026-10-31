@@ -594,7 +594,8 @@ class TP53Classifier:
 
     # ============================================================== Franklin modu (genel ACMG)
     def franklin(self, c):
-        """Franklin yardim makalelerindeki genel kurallar (help.genoox.com) + Richards 2015 birlestirme.
+        """Franklin yardim makalelerindeki genel kurallar (help.genoox.com) + Franklin sayfalarinda gozlenen davranis
+        (BP6 Strong, VCEP S3 gucunde PS3/BS3, eRepo BS2), Tavtigian puan sistemiyle birlestirme.
         Franklin'in ozel ML bilesenleri (PM1 hotspot modeli, ClinVar metin madenciligi) burada aciklanan
         yaklasik yontemlerle taklit edilir; birebir ayni sonuc garanti edilmez."""
         r = self._row(c)
